@@ -55,3 +55,8 @@ def test_supabase_and_stripe_clients_are_lazy_initialized():
     assert 'export function getSupabaseAdmin()' in supabase_lib
     assert 'function getStripe()' in checkout
     assert 'function getStripe()' in webhook
+
+
+def test_next_version_is_patched_for_cve_2025_66478():
+    pkg = Path('package.json').read_text()
+    assert '"next": "15.1.0"' not in pkg
