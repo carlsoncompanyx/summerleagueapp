@@ -1,0 +1,30 @@
+from pathlib import Path
+
+
+def test_nextjs_app_shell_exists():
+    page = Path('app/page.tsx').read_text()
+    assert 'Emerald Coast Roller League (ECRL)' in page
+    for tab in ['Home', 'Schedule', 'Standings', 'Leaders', 'Betting', 'Wallet', 'Trades', 'Shit Talk', 'Admin']:
+        assert tab in page
+
+
+def test_pwa_assets_exist():
+    manifest = Path('public/manifest.json').read_text()
+    sw = Path('public/sw.js').read_text()
+    assert 'standalone' in manifest
+    assert 'beforeinstallprompt' in Path('components/InstallPrompt.tsx').read_text()
+    assert 'caches.open' in sw
+
+
+def test_stripe_routes_exist():
+    checkout = Path('app/api/stripe/create-checkout-session/route.ts').read_text()
+    webhook = Path('app/api/stripe/webhook/route.ts').read_text()
+    assert 'checkout.sessions.create' in checkout
+    assert 'constructEvent' in webhook
+    assert 'idempotency_key' in webhook
+
+
+def test_tsconfig_has_path_alias_for_at_imports():
+    tsconfig = Path('tsconfig.json').read_text()
+    assert '"baseUrl": "."' in tsconfig
+    assert '"@/*"' in tsconfig
