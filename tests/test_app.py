@@ -65,3 +65,21 @@ def test_next_version_is_patched_for_cve_2025_66478():
     next_version = pkg['dependencies']['next'].lstrip('^~')
     major, minor, patch = [int(x) for x in next_version.split('.')[:3]]
     assert (major, minor, patch) >= (15, 5, 6)
+
+
+def test_all_nav_routes_exist_to_prevent_preview_404s():
+    routes = ['schedule', 'standings', 'leaders', 'betting', 'wallet', 'trades', 'chat', 'admin']
+    for route in routes:
+        assert Path(f'app/{route}/page.tsx').exists()
+
+
+def test_stripe_routes_are_feature_flagged():
+    checkout = Path('app/api/stripe/create-checkout-session/route.ts').read_text()
+    webhook = Path('app/api/stripe/webhook/route.ts').read_text()
+    flags = Path('lib/flags.ts').read_text()
+
+    assert 'isStripeEnabled' in checkout
+    assert 'disabled for this environment' in checkout
+    assert 'isStripeEnabled' in webhook
+    assert 'disabled: true' in webhook
+    assert 'STRIPE_ENABLED' in flags

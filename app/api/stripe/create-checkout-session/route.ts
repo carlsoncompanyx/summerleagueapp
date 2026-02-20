@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
+
+import { isStripeEnabled } from '../../../../lib/flags';
 import { getSupabaseAdmin } from '../../../../lib/supabase';
 
 function getStripe() {
@@ -9,6 +11,13 @@ function getStripe() {
 }
 
 export async function POST(req: NextRequest) {
+  if (!isStripeEnabled()) {
+    return NextResponse.json(
+      { error: 'Stripe payments are disabled for this environment.' },
+      { status: 503 }
+    );
+  }
+
   const stripe = getStripe();
   const { packageId, userId } = await req.json();
   const supabaseAdmin = getSupabaseAdmin();

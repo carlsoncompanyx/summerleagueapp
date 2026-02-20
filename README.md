@@ -3,6 +3,7 @@
 Mobile-first PWA-first Next.js app with Supabase auth/data/realtime/storage and Stripe Beer Bucks purchase flow.
 
 ## Features shipped
+- Stripe is feature-flagged off by default to avoid preview/runtime failures until payment launch.
 - Role model: `ADMIN`, `CAPTAIN`, `PLAYER`, `FAN` with UI gating helpers.
 - Tabs: Home, Schedule, Standings, Leaders, Betting, Wallet, Trades, Shit Talk, Admin.
 - PWA basics: `manifest.json`, service worker registration, install prompt helper.
@@ -24,6 +25,7 @@ Mobile-first PWA-first Next.js app with Supabase auth/data/realtime/storage and 
 - `STRIPE_WEBHOOK_SECRET`
 - `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`
 - `APP_BASE_URL`
+- `STRIPE_ENABLED` (`false` by default; set `true` to activate checkout/webhook processing)
 
 ## Local dev
 1. Create a Supabase project.

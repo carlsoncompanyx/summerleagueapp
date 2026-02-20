@@ -1,6 +1,8 @@
 import { headers } from 'next/headers';
 import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
+
+import { isStripeEnabled } from '../../../../lib/flags';
 import { getSupabaseAdmin } from '../../../../lib/supabase';
 
 function getStripe() {
@@ -10,6 +12,10 @@ function getStripe() {
 }
 
 export async function POST(req: Request) {
+  if (!isStripeEnabled()) {
+    return NextResponse.json({ received: true, disabled: true });
+  }
+
   const stripe = getStripe();
   const body = await req.text();
   const sig = (await headers()).get('stripe-signature');
