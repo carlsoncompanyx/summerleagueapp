@@ -37,3 +37,10 @@ def test_runtime_files_do_not_use_path_alias_imports():
         assert "@/'" not in text
         assert '@/lib' not in text
         assert '@/components' not in text
+
+
+def test_package_json_has_required_typescript_devdeps_for_next_build():
+    pkg = Path('package.json').read_text()
+    assert '"typescript"' in pkg
+    assert '"@types/react"' in pkg
+    assert '"@types/node"' in pkg
