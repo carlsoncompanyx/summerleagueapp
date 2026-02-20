@@ -24,7 +24,16 @@ def test_stripe_routes_exist():
     assert 'idempotency_key' in webhook
 
 
-def test_tsconfig_has_path_alias_for_at_imports():
-    tsconfig = Path('tsconfig.json').read_text()
-    assert '"baseUrl": "."' in tsconfig
-    assert '"@/*"' in tsconfig
+def test_runtime_files_do_not_use_path_alias_imports():
+    files = [
+        'app/page.tsx',
+        'app/api/stripe/create-checkout-session/route.ts',
+        'app/api/stripe/webhook/route.ts',
+        'components/NavTabs.tsx',
+    ]
+    for file in files:
+        text = Path(file).read_text()
+        assert '@/"' not in text
+        assert "@/'" not in text
+        assert '@/lib' not in text
+        assert '@/components' not in text

@@ -1,5 +1,5 @@
-import { NAV_ITEMS, Role } from '@/lib/types';
-import { canViewAdmin, canViewTrades } from '@/lib/authz';
+import { NAV_ITEMS, Role } from '../lib/types';
+import { canViewAdmin, canViewTrades } from '../lib/authz';
 
 export default function NavTabs({ role }: { role: Role }) {
   const filtered = NAV_ITEMS.filter((item) => {

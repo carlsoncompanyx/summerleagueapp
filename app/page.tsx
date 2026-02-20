@@ -1,6 +1,6 @@
-import InstallPrompt from '@/components/InstallPrompt';
-import NavTabs from '@/components/NavTabs';
-import { Role } from '@/lib/types';
+import InstallPrompt from '../components/InstallPrompt';
+import NavTabs from '../components/NavTabs';
+import { Role } from '../lib/types';
 
 const role: Role = 'ADMIN';
 
