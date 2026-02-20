@@ -1,11 +1,16 @@
 import { headers } from 'next/headers';
 import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
-import { supabaseAdmin } from '../../../../lib/supabase';
+import { getSupabaseAdmin } from '../../../../lib/supabase';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '');
+function getStripe() {
+  const key = process.env.STRIPE_SECRET_KEY;
+  if (!key) throw new Error('STRIPE_SECRET_KEY is required.');
+  return new Stripe(key);
+}
 
 export async function POST(req: Request) {
+  const stripe = getStripe();
   const body = await req.text();
   const sig = (await headers()).get('stripe-signature');
   if (!sig) return NextResponse.json({ error: 'Missing signature' }, { status: 400 });
@@ -23,9 +28,20 @@ export async function POST(req: Request) {
     const userId = String(session.metadata?.userId);
     const idem = `stripe:${event.id}`;
 
-    const { data: existing } = await supabaseAdmin.from('wallet_transactions').select('id').eq('idempotency_key', idem).maybeSingle();
+    const supabaseAdmin = getSupabaseAdmin();
+    const { data: existing } = await supabaseAdmin
+      .from('wallet_transactions')
+      .select('id')
+      .eq('idempotency_key', idem)
+      .maybeSingle();
+
     if (!existing) {
-      const { data: pkg } = await supabaseAdmin.from('beer_bucks_packages').select('*').eq('id', packageId).single();
+      const { data: pkg } = await supabaseAdmin
+        .from('beer_bucks_packages')
+        .select('*')
+        .eq('id', packageId)
+        .single();
+
       if (pkg) {
         await supabaseAdmin.rpc('credit_wallet', {
           p_user_id: userId,

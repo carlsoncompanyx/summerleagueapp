@@ -44,3 +44,14 @@ def test_package_json_has_required_typescript_devdeps_for_next_build():
     assert '"typescript"' in pkg
     assert '"@types/react"' in pkg
     assert '"@types/node"' in pkg
+
+
+def test_supabase_and_stripe_clients_are_lazy_initialized():
+    supabase_lib = Path('lib/supabase.ts').read_text()
+    checkout = Path('app/api/stripe/create-checkout-session/route.ts').read_text()
+    webhook = Path('app/api/stripe/webhook/route.ts').read_text()
+
+    assert 'export const supabaseAdmin = createClient' not in supabase_lib
+    assert 'export function getSupabaseAdmin()' in supabase_lib
+    assert 'function getStripe()' in checkout
+    assert 'function getStripe()' in webhook

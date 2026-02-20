@@ -1,11 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
-import { supabaseAdmin } from '../../../../lib/supabase';
+import { getSupabaseAdmin } from '../../../../lib/supabase';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '');
+function getStripe() {
+  const key = process.env.STRIPE_SECRET_KEY;
+  if (!key) throw new Error('STRIPE_SECRET_KEY is required.');
+  return new Stripe(key);
+}
 
 export async function POST(req: NextRequest) {
+  const stripe = getStripe();
   const { packageId, userId } = await req.json();
+  const supabaseAdmin = getSupabaseAdmin();
   const { data: pkg } = await supabaseAdmin
     .from('beer_bucks_packages')
     .select('*')
