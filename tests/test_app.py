@@ -83,3 +83,9 @@ def test_stripe_routes_are_feature_flagged():
     assert 'isStripeEnabled' in webhook
     assert 'disabled: true' in webhook
     assert 'STRIPE_ENABLED' in flags
+
+
+def test_not_found_and_catch_all_routes_exist():
+    assert Path('app/not-found.tsx').exists()
+    catch_all = Path('app/[...slug]/page.tsx').read_text()
+    assert 'prevents hard 404s' in catch_all
