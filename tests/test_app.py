@@ -89,3 +89,16 @@ def test_not_found_and_catch_all_routes_exist():
     assert Path('app/not-found.tsx').exists()
     catch_all = Path('app/[...slug]/page.tsx').read_text()
     assert 'prevents hard 404s' in catch_all
+
+
+def test_vercel_routes_fallback_to_catch_all():
+    vercel = Path('vercel.json').read_text()
+    assert '"dest": "/[...slug]"' in vercel
+    assert '"handle": "filesystem"' in vercel
+
+
+def test_vercelignore_excludes_legacy_python_artifacts():
+    ignore = Path('.vercelignore').read_text()
+    assert 'app.py' in ignore
+    assert 'league_app/' in ignore
+    assert 'requirements.txt' in ignore
