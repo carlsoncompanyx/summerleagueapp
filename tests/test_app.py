@@ -91,10 +91,10 @@ def test_not_found_and_catch_all_routes_exist():
     assert 'prevents hard 404s' in catch_all
 
 
-def test_vercel_routes_fallback_to_catch_all():
+def test_vercel_config_uses_default_nextjs_routing():
     vercel = Path('vercel.json').read_text()
-    assert '"dest": "/[...slug]"' in vercel
-    assert '"handle": "filesystem"' in vercel
+    assert '"framework": "nextjs"' in vercel
+    assert '"routes"' not in vercel
 
 
 def test_vercelignore_excludes_legacy_python_artifacts():

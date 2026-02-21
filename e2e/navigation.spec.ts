@@ -31,5 +31,5 @@ test('betting tab shows login for unauthenticated users', async ({ page }) => {
   await page.goto('/');
   await page.getByTestId('tab-betting').click();
   await expect(page).toHaveURL(/\/betting$/);
-  await expect(page.getByText('Login')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Login' })).toBeVisible();
 });
