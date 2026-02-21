@@ -102,3 +102,30 @@ def test_vercelignore_excludes_legacy_python_artifacts():
     assert 'app.py' in ignore
     assert 'league_app/' in ignore
     assert 'requirements.txt' in ignore
+
+
+def test_playwright_e2e_files_and_scripts_exist():
+    pkg = Path('package.json').read_text()
+    assert '"test:e2e"' in pkg
+    assert '"test:e2e:ci"' in pkg
+    assert '"@playwright/test"' in pkg
+
+    navtabs = Path('components/NavTabs.tsx').read_text()
+    assert 'tab-schedule' in navtabs
+    assert 'tab-standings' in navtabs
+    assert 'tab-chat' in navtabs
+    assert 'tab-betting' in navtabs
+
+    e2e = Path('e2e/navigation.spec.ts').read_text()
+    assert 'Emerald Coast Roller League' in e2e
+    assert 'tab-schedule' in e2e
+    assert 'tab-standings' in e2e
+    assert 'tab-chat' in e2e
+    assert 'tab-betting' in e2e
+
+
+def test_chat_and_betting_headings_match_e2e_expectations():
+    chat = Path('app/chat/page.tsx').read_text()
+    betting = Path('app/betting/page.tsx').read_text()
+    assert 'Shit Talk' in chat
+    assert 'Login' in betting

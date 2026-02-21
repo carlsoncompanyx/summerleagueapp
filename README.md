@@ -53,3 +53,8 @@ All league scheduling and display assumptions are `America/Chicago`.
 
 ## Output tree
 See repository tree from `find . -maxdepth 3 -type f` (excluding `node_modules`).
+
+
+## E2E Testing (Playwright)
+- `npm run test:e2e`: start production server and run Playwright tests.
+- `npm run test:e2e:ci`: build, install Chromium, start server, run headless Playwright tests, stop server.
