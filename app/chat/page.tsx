@@ -1,10 +1,23 @@
 import Link from 'next/link';
 
-export default function ChatPage() {
+import { getLeagueSnapshot } from '../../lib/league-data';
+
+export default async function ChatPage() {
+  const data = await getLeagueSnapshot();
+
   return (
     <main>
       <h1>Shit Talk</h1>
-      <p>This section is available as part of the ECRL MVP and is safe to expand iteratively.</p>
+      {'unavailable' in data && data.unavailable ? (
+        <p>{data.reason}</p>
+      ) : (
+        <div className="card">
+          {data.chatMessages.map((m: any) => (
+            <p key={m.id}><span className="badge">{m.role}</span> {m.message}</p>
+          ))}
+          {data.chatMessages.length === 0 && <p className="muted">No messages yet.</p>}
+        </div>
+      )}
       <p><Link href="/">Back to Home</Link></p>
     </main>
   );

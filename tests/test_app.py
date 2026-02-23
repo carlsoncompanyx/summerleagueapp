@@ -3,9 +3,10 @@ from pathlib import Path
 
 def test_nextjs_app_shell_exists():
     page = Path('app/page.tsx').read_text()
+    nav = Path('components/NavTabs.tsx').read_text()
     assert 'Emerald Coast Roller League (ECRL)' in page
     for tab in ['Home', 'Schedule', 'Standings', 'Leaders', 'Betting', 'Wallet', 'Trades', 'Shit Talk', 'Admin']:
-        assert tab in page
+        assert tab in nav
 
 
 def test_pwa_assets_exist():
@@ -129,3 +130,22 @@ def test_chat_and_betting_headings_match_e2e_expectations():
     betting = Path('app/betting/page.tsx').read_text()
     assert 'Shit Talk' in chat
     assert 'Login' in betting
+
+
+def test_pages_use_supabase_data_snapshot():
+    home = Path('app/page.tsx').read_text()
+    schedule = Path('app/schedule/page.tsx').read_text()
+    standings = Path('app/standings/page.tsx').read_text()
+    leaders = Path('app/leaders/page.tsx').read_text()
+    chat = Path('app/chat/page.tsx').read_text()
+    data_lib = Path('lib/league-data.ts').read_text()
+
+    assert 'getLeagueSnapshot' in home
+    assert 'getLeagueSnapshot' in schedule
+    assert 'getLeagueSnapshot' in standings
+    assert 'getLeagueSnapshot' in leaders
+    assert 'getLeagueSnapshot' in chat
+    assert "from('games')" in data_lib
+    assert "from('teams')" in data_lib
+    assert "from('players')" in data_lib
+    assert "from('chat_messages')" in data_lib

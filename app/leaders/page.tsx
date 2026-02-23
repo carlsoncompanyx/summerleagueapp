@@ -1,10 +1,25 @@
 import Link from 'next/link';
 
-export default function LeadersPage() {
+import { getLeagueSnapshot } from '../../lib/league-data';
+
+export default async function LeadersPage() {
+  const data = await getLeagueSnapshot();
+
   return (
     <main>
       <h1>Leaders</h1>
-      <p>This section is available as part of the ECRL MVP and is safe to expand iteratively.</p>
+      {'unavailable' in data && data.unavailable ? (
+        <p>{data.reason}</p>
+      ) : (
+        <table className="table">
+          <thead><tr><th>Player</th><th>Team</th><th>Pos</th><th>Nickname</th></tr></thead>
+          <tbody>
+            {data.leaders.map((p) => (
+              <tr key={p.id}><td>{p.name}</td><td>{p.team_name}</td><td>{p.position ?? '-'}</td><td>{p.nickname ?? '-'}</td></tr>
+            ))}
+          </tbody>
+        </table>
+      )}
       <p><Link href="/">Back to Home</Link></p>
     </main>
   );
