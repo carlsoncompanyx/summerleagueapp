@@ -5,13 +5,14 @@ import { Role } from '../lib/types';
 
 const ITEMS = [
   { label: 'Home', href: '/', testId: 'tab-home' },
+  { label: 'Registration', href: '/registration', testId: 'tab-registration' },
   { label: 'Schedule', href: '/schedule', testId: 'tab-schedule' },
   { label: 'Standings', href: '/standings', testId: 'tab-standings' },
-  { label: 'Leaders', href: '/leaders', testId: 'tab-leaders' },
+  { label: 'Statistics', href: '/statistics', testId: 'tab-statistics' },
   { label: 'Betting', href: '/betting', testId: 'tab-betting' },
+  { label: 'Shit Talk', href: '/chat', testId: 'tab-chat' },
   { label: 'Wallet', href: '/wallet', testId: 'tab-wallet' },
   { label: 'Trades', href: '/trades', testId: 'tab-trades' },
-  { label: 'Shit Talk', href: '/chat', testId: 'tab-chat' },
   { label: 'Admin', href: '/admin', testId: 'tab-admin' },
 ] as const;
 
@@ -23,9 +24,9 @@ export default function NavTabs({ role }: { role: Role }) {
   });
 
   return (
-    <nav className="grid grid-cols-3 gap-2 text-sm" aria-label="Primary tabs">
+    <nav className="tabs" aria-label="Primary tabs">
       {filtered.map((item) => (
-        <Link key={item.href} data-testid={item.testId} className="rounded border p-2" href={item.href}>
+        <Link key={item.href} data-testid={item.testId} className="tab-link" href={item.href}>
           {item.label}
         </Link>
       ))}

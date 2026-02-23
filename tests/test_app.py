@@ -4,8 +4,9 @@ from pathlib import Path
 def test_nextjs_app_shell_exists():
     page = Path('app/page.tsx').read_text()
     nav = Path('components/NavTabs.tsx').read_text()
-    assert 'Emerald Coast Roller League (ECRL)' in page
-    for tab in ['Home', 'Schedule', 'Standings', 'Leaders', 'Betting', 'Wallet', 'Trades', 'Shit Talk', 'Admin']:
+    layout = Path('app/layout.tsx').read_text()
+    assert 'Emerald Coast Roller League' in layout
+    for tab in ['Home', 'Registration', 'Schedule', 'Standings', 'Statistics', 'Betting', 'Shit Talk', 'Wallet', 'Trades', 'Admin']:
         assert tab in nav
 
 
@@ -69,7 +70,7 @@ def test_next_version_is_patched_for_cve_2025_66478():
 
 
 def test_all_nav_routes_exist_to_prevent_preview_404s():
-    routes = ['schedule', 'standings', 'leaders', 'betting', 'wallet', 'trades', 'chat', 'admin']
+    routes = ['registration', 'schedule', 'standings', 'statistics', 'betting', 'wallet', 'trades', 'chat', 'admin']
     for route in routes:
         assert Path(f'app/{route}/page.tsx').exists()
 
@@ -114,6 +115,8 @@ def test_playwright_e2e_files_and_scripts_exist():
     navtabs = Path('components/NavTabs.tsx').read_text()
     assert 'tab-schedule' in navtabs
     assert 'tab-standings' in navtabs
+    assert 'tab-statistics' in navtabs
+    assert 'tab-registration' in navtabs
     assert 'tab-chat' in navtabs
     assert 'tab-betting' in navtabs
 
@@ -149,3 +152,17 @@ def test_pages_use_supabase_data_snapshot():
     assert "from('teams')" in data_lib
     assert "from('players')" in data_lib
     assert "from('chat_messages')" in data_lib
+
+
+def test_home_has_required_banner_sections():
+    home = Path('app/page.tsx').read_text()
+    assert 'Upcoming Games' in home
+    assert 'Recent Scores' in home
+    assert 'Stat Leaders' in home
+    assert 'League News' in home
+
+
+def test_chat_has_message_board_and_chatroom_sections():
+    chat = Path('app/chat/page.tsx').read_text()
+    assert 'Message Board' in chat
+    assert 'Live Chatroom' in chat

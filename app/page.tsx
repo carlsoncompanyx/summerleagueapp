@@ -1,9 +1,4 @@
-import InstallPrompt from '../components/InstallPrompt';
-import NavTabs from '../components/NavTabs';
 import { getLeagueSnapshot } from '../lib/league-data';
-import { Role } from '../lib/types';
-
-const role: Role = 'ADMIN';
 
 export default async function HomePage() {
   const data = await getLeagueSnapshot();
@@ -11,14 +6,9 @@ export default async function HomePage() {
   return (
     <main>
       <section className="hero">
-        <h1>Emerald Coast Roller League (ECRL)</h1>
-        <p className="muted">Live league hub · America/Chicago</p>
-        <InstallPrompt />
+        <h2 className="section-title">Home</h2>
+        <p className="muted">Welcome to ECRL. Track games, scores, stats, and league chatter in one place.</p>
       </section>
-
-      <div style={{ marginTop: 12 }}>
-        <NavTabs role={role} />
-      </div>
 
       {'unavailable' in data && data.unavailable ? (
         <section className="card" style={{ marginTop: 14 }}>
@@ -29,41 +19,42 @@ export default async function HomePage() {
       ) : (
         <div className="grid">
           <section className="card">
-            <h2>Season</h2>
-            <p><strong>{data.season?.name ?? 'No season configured'}</strong></p>
-            {data.season && <p className="muted">{data.season.start_date} → {data.season.end_date}</p>}
-            <p><span className="badge">{data.teams.length} teams</span></p>
-          </section>
-
-          <section className="card">
-            <h2>Next Games</h2>
-            {data.schedule.slice(0, 5).map((g) => (
+            <h3 className="section-title">Upcoming Games</h3>
+            {data.schedule.slice(0, 4).map((g) => (
               <p key={g.id}>
                 <strong>{g.home_team_name}</strong> vs <strong>{g.away_team_name}</strong><br />
-                <span className="muted">{new Date(g.scheduled_at).toLocaleString()} · {g.location ?? 'TBD'} · {g.status}</span>
+                <span className="muted">{new Date(g.scheduled_at).toLocaleString()} · {g.location ?? 'TBD'}</span>
               </p>
             ))}
-            {data.schedule.length === 0 && <p className="muted">No games scheduled yet.</p>}
           </section>
 
           <section className="card">
-            <h2>Standings Snapshot</h2>
+            <h3 className="section-title">Recent Scores</h3>
+            {data.schedule.filter((g) => g.status === 'FINAL').slice(-4).reverse().map((g) => (
+              <p key={g.id}>
+                {g.home_team_name} {g.home_score} - {g.away_score} {g.away_team_name}
+              </p>
+            ))}
+            {data.schedule.filter((g) => g.status === 'FINAL').length === 0 && <p className="muted">No final scores yet.</p>}
+          </section>
+
+          <section className="card">
+            <h3 className="section-title">Stat Leaders</h3>
             <table className="table">
-              <thead><tr><th>Team</th><th>GP</th><th>W</th><th>L</th><th>T</th><th>PTS</th></tr></thead>
+              <thead><tr><th>Player</th><th>Team</th><th>Pos</th></tr></thead>
               <tbody>
-                {data.standings.slice(0, 6).map((s) => (
-                  <tr key={s.team}><td>{s.team}</td><td>{s.gp}</td><td>{s.w}</td><td>{s.l}</td><td>{s.t}</td><td>{s.pts}</td></tr>
+                {data.leaders.slice(0, 6).map((p) => (
+                  <tr key={p.id}><td>{p.name}</td><td>{p.team_name}</td><td>{p.position ?? '-'}</td></tr>
                 ))}
               </tbody>
             </table>
           </section>
 
           <section className="card">
-            <h2>Shit Talk Preview</h2>
-            {data.chatMessages.slice(0, 4).map((m: any) => (
-              <p key={m.id}><span className="badge">{m.role}</span> {m.message}</p>
-            ))}
-            {data.chatMessages.length === 0 && <p className="muted">No messages yet.</p>}
+            <h3 className="section-title">League News</h3>
+            <p><span className="badge">Season</span> {data.season?.name ?? 'No active season yet'}</p>
+            <p><span className="badge">Teams</span> {data.teams.length} teams active this season.</p>
+            <p className="muted">News feed hooks can be connected to a dedicated table next.</p>
           </section>
         </div>
       )}
