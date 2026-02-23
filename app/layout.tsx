@@ -9,6 +9,8 @@ export const metadata = {
 };
 
 const role: Role = 'ADMIN';
+const logoSrc =
+  'https://fsmbogksjimrmfjzxrlx.supabase.co/storage/v1/object/public/images/ecrl%20logo.PNG';
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -16,9 +18,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <header className="site-header">
           <div className="site-header-inner">
-            <div>
-              <p className="kicker">Beach Roller Hockey</p>
-              <h1>Emerald Coast Roller League</h1>
+            <div className="brand-block">
+              <img className="logo-mark" src={logoSrc} alt="Emerald Coast Roller League logo" />
+              <div>
+                <p className="kicker">Beach Roller Hockey</p>
+                <h1>Emerald Coast Roller League</h1>
+              </div>
             </div>
             <InstallPrompt />
           </div>
