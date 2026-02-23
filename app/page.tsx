@@ -19,7 +19,7 @@ export default async function HomePage() {
       ) : (
         <div className="grid">
           <section className="card">
-            <h3 className="section-title">Upcoming Games</h3>
+            <h3 className="card-title">Upcoming Games</h3>
             {data.schedule.slice(0, 4).map((g) => (
               <p key={g.id}>
                 <strong>{g.home_team_name}</strong> vs <strong>{g.away_team_name}</strong><br />
@@ -29,7 +29,7 @@ export default async function HomePage() {
           </section>
 
           <section className="card">
-            <h3 className="section-title">Recent Scores</h3>
+            <h3 className="card-title">Recent Scores</h3>
             {data.schedule.filter((g) => g.status === 'FINAL').slice(-4).reverse().map((g) => (
               <p key={g.id}>
                 {g.home_team_name} {g.home_score} - {g.away_score} {g.away_team_name}
@@ -39,7 +39,7 @@ export default async function HomePage() {
           </section>
 
           <section className="card">
-            <h3 className="section-title">Stat Leaders</h3>
+            <h3 className="card-title">Stat Leaders</h3>
             <table className="table">
               <thead><tr><th>Player</th><th>Team</th><th>Pos</th></tr></thead>
               <tbody>
@@ -51,7 +51,7 @@ export default async function HomePage() {
           </section>
 
           <section className="card">
-            <h3 className="section-title">League News</h3>
+            <h3 className="card-title">League News</h3>
             <p><span className="badge">Season</span> {data.season?.name ?? 'No active season yet'}</p>
             <p><span className="badge">Teams</span> {data.teams.length} teams active this season.</p>
             <p className="muted">News feed hooks can be connected to a dedicated table next.</p>
