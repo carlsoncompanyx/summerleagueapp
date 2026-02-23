@@ -25,9 +25,10 @@ body {
 }
 .site-header-inner {
   width: 100%;
-  display: flex;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
   align-items: center;
-  justify-content: space-between;
+  gap: 12px;
 }
 .logo-mark {
   width: 78px;
@@ -57,7 +58,7 @@ h1 {
   letter-spacing: 0.01em;
 }
 
-main { padding: 20px 16px 108px; }
+main { padding: 20px 16px 20px; }
 a { color: #0b7285; }
 
 .hero,
@@ -117,19 +118,11 @@ a { color: #0b7285; }
 }
 
 .tabs {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  width: 100%;
-  background: var(--brand-bg);
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-  padding: 8px 6px calc(8px + env(safe-area-inset-bottom));
   display: flex;
   justify-content: center;
-  gap: 2px;
+  gap: 4px;
   overflow-x: auto;
-  z-index: 50;
+  padding: 0 4px;
 }
 .tab-link {
   color: #8ea4b4;
@@ -138,10 +131,10 @@ a { color: #0b7285; }
   flex-direction: column;
   align-items: center;
   gap: 2px;
-  padding: 6px 8px;
+  padding: 4px 6px;
   border-radius: 10px;
-  min-width: 60px;
-  font-size: 0.56rem;
+  min-width: 52px;
+  font-size: 0.5rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   font-weight: 800;
@@ -174,5 +167,20 @@ button {
   .logo-mark {
     width: 108px;
     height: 108px;
+  }
+}
+
+@media (max-width: 900px) {
+  .site-header-inner {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    gap: 8px;
+  }
+  .tabs {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  .bucks-pill {
+    justify-self: end;
   }
 }

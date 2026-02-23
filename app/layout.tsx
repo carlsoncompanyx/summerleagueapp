@@ -18,12 +18,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <header className="site-header">
           <div className="site-header-inner">
             <img className="logo-mark" src={logoSrc} alt="Emerald Coast Roller League logo" />
+            <NavTabs role={role} />
             <div className="bucks-pill">$150 BB</div>
           </div>
         </header>
 
         <div className="app-shell">{children}</div>
-        <NavTabs role={role} />
       </body>
     </html>
   );
