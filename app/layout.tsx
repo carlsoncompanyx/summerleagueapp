@@ -16,20 +16,25 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body>
-        <header className="site-header">
-          <div className="site-header-inner">
-            <div className="brand-block">
-              <img className="logo-mark" src={logoSrc} alt="Emerald Coast Roller League logo" />
-              <div>
-                <p className="kicker">Beach Roller Hockey</p>
-                <h1>Emerald Coast Roller League</h1>
+        <div className="app-shell">
+          <header className="site-header">
+            <div className="site-header-inner">
+              <div className="brand-block">
+                <img className="logo-mark" src={logoSrc} alt="Emerald Coast Roller League logo" />
+                <div>
+                  <p className="kicker">Beach Roller Hockey</p>
+                  <h1>Emerald Coast Roller League</h1>
+                </div>
+              </div>
+              <div className="header-actions">
+                <div className="bucks-pill">$150 BB</div>
+                <InstallPrompt />
               </div>
             </div>
-            <InstallPrompt />
-          </div>
+          </header>
+          {children}
           <NavTabs role={role} />
-        </header>
-        {children}
+        </div>
       </body>
     </html>
   );

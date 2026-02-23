@@ -1,5 +1,3 @@
-import Link from 'next/link';
-
 import { getLeagueSnapshot } from '../../lib/league-data';
 
 export default async function ChatPage() {
@@ -22,16 +20,15 @@ export default async function ChatPage() {
 
           <section className="card">
             <h2 className="section-title">Live Chatroom</h2>
-            <p className="muted">Realtime chat stream (Supabase Realtime) can be mounted here.</p>
+            <p className="muted">Realtime chat stream can be mounted here with Supabase Realtime.</p>
             <form>
               <label htmlFor="chat-input">Message</label><br />
-              <input id="chat-input" name="chat-input" placeholder="Type your chirp..." style={{ width: '100%', padding: 8, marginTop: 6 }} />
+              <input id="chat-input" name="chat-input" placeholder="Talk some trash..." style={{ width: '100%', marginTop: 6 }} />
               <button type="button" style={{ marginTop: 8 }}>Send</button>
             </form>
           </section>
         </div>
       )}
-      <p><Link href="/">Back to Home</Link></p>
     </main>
   );
 }
