@@ -1,5 +1,4 @@
 import './globals.css';
-import InstallPrompt from '../components/InstallPrompt';
 import NavTabs from '../components/NavTabs';
 import { Role } from '../lib/types';
 
@@ -16,25 +15,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body>
-        <div className="app-shell">
-          <header className="site-header">
-            <div className="site-header-inner">
-              <div className="brand-block">
-                <img className="logo-mark" src={logoSrc} alt="Emerald Coast Roller League logo" />
-                <div>
-                  <p className="kicker">Beach Roller Hockey</p>
-                  <h1>Emerald Coast Roller League</h1>
-                </div>
-              </div>
-              <div className="header-actions">
-                <div className="bucks-pill">$150 BB</div>
-                <InstallPrompt />
-              </div>
-            </div>
-          </header>
-          {children}
-          <NavTabs role={role} />
-        </div>
+        <header className="site-header">
+          <div className="site-header-inner">
+            <img className="logo-mark" src={logoSrc} alt="Emerald Coast Roller League logo" />
+            <div className="bucks-pill">$150 BB</div>
+          </div>
+        </header>
+
+        <div className="app-shell">{children}</div>
+        <NavTabs role={role} />
       </body>
     </html>
   );

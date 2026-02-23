@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test';
 test('home returns content with league name', async ({ page }) => {
   const response = await page.goto('/');
   expect(response?.status()).toBe(200);
-  await expect(page.getByText('Emerald Coast Roller League')).toBeVisible();
+  await expect(page.getByAltText('Emerald Coast Roller League logo')).toBeVisible();
 });
 
 test('schedule tab navigates to /schedule and shows Schedule heading', async ({ page }) => {

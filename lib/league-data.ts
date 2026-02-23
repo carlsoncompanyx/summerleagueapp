@@ -1,4 +1,6 @@
-import { getSupabaseAdminSafe } from './supabase';
+import { unstable_noStore as noStore } from 'next/cache';
+
+import { getSupabaseAdminSafe, getSupabaseSafe } from './supabase';
 
 type Team = { id: string; name: string };
 type Game = {
@@ -22,9 +24,15 @@ type Player = {
 };
 
 export async function getLeagueSnapshot() {
-  const supabase = getSupabaseAdminSafe();
+  noStore();
+
+  const supabase = getSupabaseAdminSafe() ?? getSupabaseSafe();
   if (!supabase) {
-    return { unavailable: true, reason: 'Supabase environment variables are missing.' } as const;
+    return {
+      unavailable: true,
+      reason:
+        "Supabase environment variables are missing. Set NEXT_PUBLIC_SUPABASE_URL and either SUPABASE_SERVICE_ROLE_KEY or NEXT_PUBLIC_SUPABASE_ANON_KEY.",
+    } as const;
   }
 
   const [seasonRes, teamRes, gameRes, playerRes, chatRes] = await Promise.all([

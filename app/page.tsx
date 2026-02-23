@@ -5,6 +5,7 @@ export default async function HomePage() {
 
   return (
     <main>
+      <p className="muted" style={{ marginTop: 0 }}>Emerald Coast Roller League</p>
       {'unavailable' in data && data.unavailable ? (
         <section className="card" style={{ marginTop: 14 }}>
           <h2>League Data Unavailable</h2>
