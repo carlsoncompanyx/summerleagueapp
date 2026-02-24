@@ -242,8 +242,16 @@ def test_register_flow_page_and_header_links_exist():
     assert 'Step 2: Season Registration' in register_page
     assert 'Step 3: Payment' in register_page
     assert 'supabase.auth.signUp' in register_page
+    assert 'getSupabaseSafe' in register_page
     assert ".from('profiles')" in register_page
     assert ".from('registrations')" in register_page
     assert 'already registered for this season' in register_page
     assert 'add column if not exists preferred_positions text[]' in schema
     assert 'add column if not exists experience text' in schema
+
+
+
+def test_login_page_has_supabase_auth_sign_in():
+    login = Path('app/login/page.tsx').read_text()
+    assert 'signInWithPassword' in login
+    assert 'Supabase client is not configured' in login

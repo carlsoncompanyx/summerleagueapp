@@ -19,6 +19,12 @@ function requireSupabaseUrl(): string {
   return value;
 }
 
+function requireSupabaseAnonKey(): string {
+  const value = getSupabaseAnonKey();
+  if (!value) throw new Error('NEXT_PUBLIC_SUPABASE_ANON_KEY or SUPABASE_ANON_KEY is required.');
+  return value;
+}
+
 function requireEnv(name: string): string {
   const value = getEnv(name);
   if (!value) throw new Error(`${name} is required.`);
@@ -26,7 +32,7 @@ function requireEnv(name: string): string {
 }
 
 export function getSupabase() {
-  return createClient(requireSupabaseUrl(), requireEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY'));
+  return createClient(requireSupabaseUrl(), requireSupabaseAnonKey());
 }
 
 export function getSupabaseSafe() {

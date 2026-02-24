@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 
-import { getSupabase } from '../../lib/supabase';
+import { getSupabaseSafe } from '../../lib/supabase';
 
 type Step = 1 | 2 | 3;
 
@@ -17,7 +17,7 @@ type OpenSeason = {
 const POSITION_OPTIONS = ['Forward', 'Defense', 'Goalie'] as const;
 
 export default function RegisterPage() {
-  const supabase = useMemo(() => getSupabase(), []);
+  const supabase = useMemo(() => getSupabaseSafe(), []);
   const [step, setStep] = useState<Step>(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -38,6 +38,8 @@ export default function RegisterPage() {
 
   useEffect(() => {
     let mounted = true;
+
+    if (!supabase) return;
 
     (async () => {
       const { data: sessionData } = await supabase.auth.getSession();
@@ -71,6 +73,7 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
+      if (!supabase) throw new Error('Supabase client is not configured.');
       let userId = sessionUserId;
 
       if (!isLoggedIn) {
@@ -140,6 +143,7 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
+      if (!supabase) throw new Error('Supabase client is not configured.');
       if (!sessionUserId) throw new Error('You must be logged in before season registration.');
       if (!seasonId) throw new Error('Please select a season.');
 
@@ -171,6 +175,12 @@ export default function RegisterPage() {
   return (
     <main>
       <h1>Register</h1>
+
+      {!supabase && (
+        <section className="card" style={{ marginBottom: 12 }}>
+          <p>Supabase client is not configured. Add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY (or SUPABASE_URL / SUPABASE_ANON_KEY).</p>
+        </section>
+      )}
 
       {error && (
         <section className="card" style={{ marginBottom: 12 }}>
@@ -210,8 +220,8 @@ export default function RegisterPage() {
             )}
 
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <button type="button" disabled={loading} onClick={onSubmitProfileOnly}>Submit Profile Only</button>
-              <button type="button" disabled={loading} onClick={onRegisterForSeasonFromStep1}>Register for Season</button>
+              <button type="button" disabled={loading || !supabase} onClick={onSubmitProfileOnly}>Submit Profile Only</button>
+              <button type="button" disabled={loading || !supabase} onClick={onRegisterForSeasonFromStep1}>Register for Season</button>
             </div>
           </div>
         )}
@@ -253,7 +263,7 @@ export default function RegisterPage() {
             <label htmlFor="experience">Experience</label>
             <textarea id="experience" rows={4} value={experience} onChange={(e) => setExperience(e.target.value)} />
 
-            <button type="button" disabled={loading || step < 2} onClick={onSubmitSeason}>Submit Season Registration</button>
+            <button type="button" disabled={loading || step < 2 || !supabase} onClick={onSubmitSeason}>Submit Season Registration</button>
           </div>
         )}
       </section>
