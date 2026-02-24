@@ -49,6 +49,13 @@ create table if not exists public.registrations (
   unique(season_id, user_id)
 );
 
+
+alter table public.registrations
+add column if not exists preferred_positions text[];
+
+alter table public.registrations
+add column if not exists experience text;
+
 create table if not exists public.players (
   id uuid primary key default gen_random_uuid(),
   team_id uuid references public.teams(id) on delete set null,
@@ -277,6 +284,7 @@ alter table public.chat_messages enable row level security;
 alter table public.message_reports enable row level security;
 
 create policy profiles_select_all on public.profiles for select to authenticated using (true);
+create policy profiles_insert_self on public.profiles for insert to authenticated with check (auth.uid() = user_id or public.is_admin());
 create policy profiles_update_self on public.profiles for update to authenticated using (auth.uid() = user_id or public.is_admin()) with check (auth.uid() = user_id or public.is_admin());
 
 create policy seasons_read on public.seasons for select to authenticated using (true);
@@ -284,6 +292,11 @@ create policy seasons_admin_write on public.seasons for all to authenticated usi
 
 create policy teams_read on public.teams for select to authenticated using (true);
 create policy teams_admin_write on public.teams for all to authenticated using (public.is_admin()) with check (public.is_admin());
+
+
+create policy registrations_select_self on public.registrations for select to authenticated using (user_id = auth.uid() or public.is_admin());
+create policy registrations_insert_self on public.registrations for insert to authenticated with check (user_id = auth.uid() or public.is_admin());
+create policy registrations_update_self_or_admin on public.registrations for update to authenticated using (user_id = auth.uid() or public.is_admin()) with check (user_id = auth.uid() or public.is_admin());
 
 create policy players_read on public.players for select to authenticated using (true);
 create policy players_update_self_or_captain_or_admin on public.players for update to authenticated

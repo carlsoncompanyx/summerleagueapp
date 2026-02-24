@@ -1,3 +1,5 @@
+import Link from 'next/link';
+
 import './globals.css';
 import NavTabs from '../components/NavTabs';
 import { Role } from '../lib/types';
@@ -19,7 +21,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <div className="site-header-inner">
             <img className="logo-mark" src={logoSrc} alt="Emerald Coast Roller League logo" />
             <NavTabs role={role} />
-            <div className="bucks-pill">$150 BB</div>
+            <div className="header-actions">
+              <div className="bucks-pill">$150 BB</div>
+              <Link className="header-auth-link" href="/register">Register</Link>
+              <Link className="header-auth-link" href="/login">Login</Link>
+            </div>
           </div>
         </header>
 

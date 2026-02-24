@@ -70,7 +70,7 @@ def test_next_version_is_patched_for_cve_2025_66478():
 
 
 def test_all_nav_routes_exist_to_prevent_preview_404s():
-    routes = ['registration', 'schedule', 'standings', 'statistics', 'betting', 'wallet', 'trades', 'chat', 'admin']
+    routes = ['registration', 'register', 'schedule', 'standings', 'statistics', 'betting', 'wallet', 'trades', 'chat', 'admin']
     for route in routes:
         assert Path(f'app/{route}/page.tsx').exists()
 
@@ -228,3 +228,22 @@ def test_trades_and_admin_have_requested_management_sections():
     assert 'Import Schedule CSV' in admin
     assert 'Game Scores' in admin
     assert 'Update Game Score' in admin
+
+
+
+def test_register_flow_page_and_header_links_exist():
+    layout = Path('app/layout.tsx').read_text()
+    register_page = Path('app/register/page.tsx').read_text()
+    schema = Path('sql/schema.sql').read_text()
+
+    assert 'href="/register"' in layout
+    assert 'href="/login"' in layout
+    assert 'Step 1: Profile Creation' in register_page
+    assert 'Step 2: Season Registration' in register_page
+    assert 'Step 3: Payment' in register_page
+    assert 'supabase.auth.signUp' in register_page
+    assert ".from('profiles')" in register_page
+    assert ".from('registrations')" in register_page
+    assert 'already registered for this season' in register_page
+    assert 'add column if not exists preferred_positions text[]' in schema
+    assert 'add column if not exists experience text' in schema

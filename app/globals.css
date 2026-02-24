@@ -35,6 +35,23 @@ body {
   height: 78px;
   object-fit: contain;
 }
+
+.header-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+.header-auth-link {
+  background: #f1f8ff;
+  color: #0b3250;
+  border-radius: 8px;
+  border: 1px solid #9fc4df;
+  padding: 4px 10px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-decoration: none;
+}
 .bucks-pill {
   font-size: 0.8rem;
   font-weight: 800;
@@ -185,7 +202,8 @@ button {
     width: 100%;
     justify-content: flex-start;
   }
-  .bucks-pill {
-    justify-self: end;
+  .header-actions {
+    width: 100%;
+    align-items: center;
   }
 }
