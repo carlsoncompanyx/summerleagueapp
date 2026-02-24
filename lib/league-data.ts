@@ -1,6 +1,6 @@
 import { unstable_noStore as noStore } from 'next/cache';
 
-import { getSupabaseAdminSafe, getSupabaseSafe } from './supabase';
+import { getSupabaseAdminSafe, getSupabaseEnvStatus, getSupabaseSafe } from './supabase';
 
 type Team = { id: string; name: string };
 type Game = {
@@ -26,12 +26,14 @@ type Player = {
 export async function getLeagueSnapshot() {
   noStore();
 
-  const supabase = getSupabaseAdminSafe() ?? getSupabaseSafe();
+  const adminClient = getSupabaseAdminSafe();
+  const supabase = adminClient ?? getSupabaseSafe();
   if (!supabase) {
+    const env = getSupabaseEnvStatus();
     return {
       unavailable: true,
       reason:
-        "Supabase environment variables are missing. Set NEXT_PUBLIC_SUPABASE_URL and either SUPABASE_SERVICE_ROLE_KEY or NEXT_PUBLIC_SUPABASE_ANON_KEY.",
+        `Supabase environment variables are missing or unavailable at runtime. Env status: ${JSON.stringify(env)}`
     } as const;
   }
 
@@ -46,13 +48,15 @@ export async function getLeagueSnapshot() {
   if (seasonRes.error || teamRes.error || gameRes.error || playerRes.error || chatRes.error) {
     return {
       unavailable: true,
-      reason:
-        seasonRes.error?.message ||
-        teamRes.error?.message ||
-        gameRes.error?.message ||
-        playerRes.error?.message ||
-        chatRes.error?.message ||
-        'Unable to fetch league data.',
+      reason: `Unable to fetch league data. Errors: ${JSON.stringify({
+        seasons: seasonRes.error?.message,
+        teams: teamRes.error?.message,
+        games: gameRes.error?.message,
+        players: playerRes.error?.message,
+        chat_messages: chatRes.error?.message,
+        usingServiceRole: Boolean(adminClient),
+        env: getSupabaseEnvStatus(),
+      })}`,
     } as const;
   }
 
