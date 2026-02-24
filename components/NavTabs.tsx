@@ -21,7 +21,7 @@ import { Role } from '../lib/types';
 const ITEMS = [
   { label: 'Home', href: '/', testId: 'tab-home', icon: Home },
   { label: 'Registration', href: '/registration', testId: 'tab-registration', icon: UserPlus },
-  { label: 'Schedule', href: '/schedule', testId: 'tab-schedule', icon: Calendar },
+  { label: 'Games', href: '/schedule', testId: 'tab-schedule', icon: Calendar },
   { label: 'Standings', href: '/standings', testId: 'tab-standings', icon: Trophy },
   { label: 'Statistics', href: '/statistics', testId: 'tab-statistics', icon: BarChart2 },
   { label: 'Betting', href: '/betting', testId: 'tab-betting', icon: DollarSign },

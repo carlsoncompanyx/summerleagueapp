@@ -6,7 +6,7 @@ def test_nextjs_app_shell_exists():
     nav = Path('components/NavTabs.tsx').read_text()
     layout = Path('app/layout.tsx').read_text()
     assert 'Emerald Coast Roller League' in layout
-    for tab in ['Home', 'Registration', 'Schedule', 'Standings', 'Statistics', 'Betting', 'Shit Talk', 'Wallet', 'Trades', 'Admin']:
+    for tab in ['Home', 'Registration', 'Games', 'Standings', 'Statistics', 'Betting', 'Shit Talk', 'Wallet', 'Trades', 'Admin']:
         assert tab in nav
 
 
@@ -166,3 +166,57 @@ def test_chat_has_message_board_and_chatroom_sections():
     chat = Path('app/chat/page.tsx').read_text()
     assert 'Message Board' in chat
     assert 'Live Chatroom' in chat
+
+
+def test_registration_page_explains_access_vs_season_rules():
+    registration = Path('app/registration/page.tsx').read_text()
+    assert 'one account per email' in registration
+    assert 'one registration per season' in registration
+
+
+def test_games_page_has_upcoming_and_completed_sections():
+    schedule = Path('app/schedule/page.tsx').read_text()
+    assert '<h1>Games</h1>' in schedule
+    assert 'Upcoming Games' in schedule
+    assert 'Completed Games' in schedule
+    assert 'Home Team' in schedule
+    assert 'Away Team' in schedule
+    assert 'Home Score' in schedule
+    assert 'Away Score' in schedule
+    assert 'Status' not in schedule
+
+
+def test_statistics_page_has_leaderboard_and_team_filter():
+    stats_page = Path('app/statistics/page.tsx').read_text()
+    stats_client = Path('components/StatisticsClient.tsx').read_text()
+    assert 'StatisticsClient' in stats_page
+    assert 'Leaderboard' in stats_client
+    assert 'All Stats' in stats_client
+    assert 'team-filter' in stats_client
+    assert '<th>G</th>' in stats_client
+    assert '<th>A</th>' in stats_client
+    assert '<th>P</th>' in stats_client
+    assert '<th>Wins</th>' in stats_client
+    assert '<th>GAA</th>' in stats_client
+
+
+def test_chat_page_has_chatroom_first_and_message_board_actions():
+    chat = Path('app/chat/page.tsx').read_text()
+    assert chat.index('Live Chatroom') < chat.index('Message Board')
+    assert 'New Post' in chat
+    assert 'Refresh' in chat
+
+
+def test_trades_and_admin_have_requested_management_sections():
+    trades = Path('app/trades/page.tsx').read_text()
+    admin = Path('app/admin/page.tsx').read_text()
+    assert 'My Roster' in trades
+    assert 'Players Available for Trade' in trades
+    assert 'All Players' in trades
+    assert 'On the trade block' in trades
+    assert 'Open to trade' in trades
+    assert 'Untradeable' in trades
+    assert 'Player Information & Registration' in admin
+    assert 'Schedule Management' in admin
+    assert 'Import CSV' in admin
+    assert 'Game Scores' in admin

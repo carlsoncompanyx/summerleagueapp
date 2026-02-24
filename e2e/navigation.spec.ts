@@ -6,11 +6,11 @@ test('home returns content with league name', async ({ page }) => {
   await expect(page.getByAltText('Emerald Coast Roller League logo')).toBeVisible();
 });
 
-test('schedule tab navigates to /schedule and shows Schedule heading', async ({ page }) => {
+test('schedule tab navigates to /schedule and shows Games heading', async ({ page }) => {
   await page.goto('/');
   await page.getByTestId('tab-schedule').click();
   await expect(page).toHaveURL(/\/schedule$/);
-  await expect(page.getByRole('heading', { name: 'Schedule' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Games' })).toBeVisible();
 });
 
 test('standings tab navigates to /standings and shows Standings heading', async ({ page }) => {
