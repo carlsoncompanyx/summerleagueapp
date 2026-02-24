@@ -163,15 +163,17 @@ def test_home_has_required_banner_sections():
 
 
 def test_chat_has_message_board_and_chatroom_sections():
-    chat = Path('app/chat/page.tsx').read_text()
+    chat = Path('components/ChatClient.tsx').read_text()
     assert 'Message Board' in chat
     assert 'Live Chatroom' in chat
 
 
 def test_registration_page_explains_access_vs_season_rules():
     registration = Path('app/registration/page.tsx').read_text()
-    assert 'one account per email' in registration
-    assert 'one registration per season' in registration
+    assert 'Create your site account and register for the current season in one form.' in registration
+    assert 'Already a member? Register for latest season' in registration
+    assert 'first_name' in registration
+    assert 'last_name' in registration
 
 
 def test_games_page_has_upcoming_and_completed_sections():
@@ -193,23 +195,28 @@ def test_statistics_page_has_leaderboard_and_team_filter():
     assert 'Leaderboard' in stats_client
     assert 'All Stats' in stats_client
     assert 'team-filter' in stats_client
+    assert 'Skaters' in stats_client
+    assert 'Goalies' in stats_client
     assert '<th>G</th>' in stats_client
     assert '<th>A</th>' in stats_client
     assert '<th>P</th>' in stats_client
+    assert '<th>G/GP</th>' in stats_client
+    assert '<th>P/GP</th>' in stats_client
     assert '<th>Wins</th>' in stats_client
     assert '<th>GAA</th>' in stats_client
 
 
 def test_chat_page_has_chatroom_first_and_message_board_actions():
-    chat = Path('app/chat/page.tsx').read_text()
+    chat = Path('components/ChatClient.tsx').read_text()
     assert chat.index('Live Chatroom') < chat.index('Message Board')
     assert 'New Post' in chat
     assert 'Refresh' in chat
+    assert 'onClick={sendChat}' in chat
 
 
 def test_trades_and_admin_have_requested_management_sections():
     trades = Path('app/trades/page.tsx').read_text()
-    admin = Path('app/admin/page.tsx').read_text()
+    admin = Path('components/AdminClient.tsx').read_text()
     assert 'My Roster' in trades
     assert 'Players Available for Trade' in trades
     assert 'All Players' in trades
@@ -218,5 +225,6 @@ def test_trades_and_admin_have_requested_management_sections():
     assert 'Untradeable' in trades
     assert 'Player Information & Registration' in admin
     assert 'Schedule Management' in admin
-    assert 'Import CSV' in admin
+    assert 'Import Schedule CSV' in admin
     assert 'Game Scores' in admin
+    assert 'Update Game Score' in admin

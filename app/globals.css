@@ -168,6 +168,11 @@ button {
     width: 108px;
     height: 108px;
   }
+  .tab-link {
+    font-size: 0.68rem;
+    min-width: 72px;
+    padding: 6px 10px;
+  }
 }
 
 @media (max-width: 900px) {
