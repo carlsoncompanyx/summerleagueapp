@@ -6,7 +6,7 @@ def test_nextjs_app_shell_exists():
     nav = Path('components/NavTabs.tsx').read_text()
     layout = Path('app/layout.tsx').read_text()
     assert 'Emerald Coast Roller League' in layout
-    for tab in ['Home', 'Registration', 'Games', 'Standings', 'Statistics', 'Betting', 'Shit Talk', 'Wallet', 'Trades', 'Admin']:
+    for tab in ['Home', 'Games', 'Standings', 'Statistics', 'Betting', 'Shit Talk', 'Wallet', 'Trades', 'Admin']:
         assert tab in nav
 
 
@@ -116,7 +116,6 @@ def test_playwright_e2e_files_and_scripts_exist():
     assert 'tab-schedule' in navtabs
     assert 'tab-standings' in navtabs
     assert 'tab-statistics' in navtabs
-    assert 'tab-registration' in navtabs
     assert 'tab-chat' in navtabs
     assert 'tab-betting' in navtabs
 

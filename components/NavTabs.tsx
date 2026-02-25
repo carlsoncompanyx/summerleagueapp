@@ -12,7 +12,6 @@ import {
   Settings,
   ShieldAlert,
   Trophy,
-  UserPlus,
 } from 'lucide-react';
 
 import { canViewAdmin, canViewTrades } from '../lib/authz';
@@ -20,7 +19,6 @@ import { Role } from '../lib/types';
 
 const ITEMS = [
   { label: 'Home', href: '/', testId: 'tab-home', icon: Home },
-  { label: 'Registration', href: '/registration', testId: 'tab-registration', icon: UserPlus },
   { label: 'Games', href: '/schedule', testId: 'tab-schedule', icon: Calendar },
   { label: 'Standings', href: '/standings', testId: 'tab-standings', icon: Trophy },
   { label: 'Statistics', href: '/statistics', testId: 'tab-statistics', icon: BarChart2 },

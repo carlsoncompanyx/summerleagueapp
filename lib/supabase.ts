@@ -5,23 +5,43 @@ function getEnv(name: string): string | undefined {
   return value && value.trim() ? value : undefined;
 }
 
+function isBrowser(): boolean {
+  return typeof window !== 'undefined';
+}
+
 function getSupabaseUrl(): string | undefined {
+  if (isBrowser()) {
+    return getEnv('NEXT_PUBLIC_SUPABASE_URL');
+  }
   return getEnv('NEXT_PUBLIC_SUPABASE_URL') ?? getEnv('SUPABASE_URL');
 }
 
 function getSupabaseAnonKey(): string | undefined {
+  if (isBrowser()) {
+    return getEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY');
+  }
   return getEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY') ?? getEnv('SUPABASE_ANON_KEY');
 }
 
 function requireSupabaseUrl(): string {
   const value = getSupabaseUrl();
-  if (!value) throw new Error('NEXT_PUBLIC_SUPABASE_URL or SUPABASE_URL is required.');
+  if (!value) {
+    const requiredName = isBrowser()
+      ? 'NEXT_PUBLIC_SUPABASE_URL'
+      : 'NEXT_PUBLIC_SUPABASE_URL or SUPABASE_URL';
+    throw new Error(`${requiredName} is required.`);
+  }
   return value;
 }
 
 function requireSupabaseAnonKey(): string {
   const value = getSupabaseAnonKey();
-  if (!value) throw new Error('NEXT_PUBLIC_SUPABASE_ANON_KEY or SUPABASE_ANON_KEY is required.');
+  if (!value) {
+    const requiredName = isBrowser()
+      ? 'NEXT_PUBLIC_SUPABASE_ANON_KEY'
+      : 'NEXT_PUBLIC_SUPABASE_ANON_KEY or SUPABASE_ANON_KEY';
+    throw new Error(`${requiredName} is required.`);
+  }
   return value;
 }
 

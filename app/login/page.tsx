@@ -39,7 +39,7 @@ export default function LoginPage() {
 
       {!supabase && (
         <section className="card" style={{ marginBottom: 12 }}>
-          <p>Supabase client is not configured. Add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY (or SUPABASE_URL / SUPABASE_ANON_KEY).</p>
+          <p>Supabase client is not configured. Add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in Vercel project environment variables.</p>
         </section>
       )}
 
