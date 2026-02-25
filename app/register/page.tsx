@@ -36,15 +36,46 @@ export default function RegisterPage() {
   const [preferredPositions, setPreferredPositions] = useState<string[]>([]);
   const [experience, setExperience] = useState('');
 
+  const isLoggedIn = Boolean(sessionUserId);
+
   useEffect(() => {
     let mounted = true;
 
     if (!supabase) return;
 
-    (async () => {
+    const syncSession = async () => {
       const { data: sessionData } = await supabase.auth.getSession();
-      if (mounted) setSessionUserId(sessionData.session?.user?.id ?? null);
+      if (!mounted) return;
+      setSessionUserId(sessionData.session?.user?.id ?? null);
+    };
 
+    syncSession();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!mounted) return;
+      setSessionUserId(session?.user?.id ?? null);
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, [supabase]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    if (!supabase || !sessionUserId || step < 2) {
+      if (mounted) {
+        setOpenSeasons([]);
+        setSeasonId('');
+      }
+      return;
+    }
+
+    const loadOpenSeasons = async () => {
       const now = new Date().toISOString();
       const { data, error: seasonsError } = await supabase
         .from('seasons')
@@ -53,20 +84,47 @@ export default function RegisterPage() {
         .gte('registration_close_at', now)
         .order('start_date', { ascending: true });
 
-      if (mounted && !seasonsError) {
-        setOpenSeasons((data ?? []) as OpenSeason[]);
-        if ((data ?? []).length) {
-          setSeasonId(String((data ?? [])[0].id));
-        }
+      if (!mounted) return;
+
+      if (seasonsError) {
+        setError(seasonsError.message);
+        setOpenSeasons([]);
+        setSeasonId('');
+        return;
       }
-    })();
+
+      setOpenSeasons((data ?? []) as OpenSeason[]);
+      if ((data ?? []).length) {
+        setSeasonId(String((data ?? [])[0].id));
+      } else {
+        setSeasonId('');
+      }
+    };
+
+    loadOpenSeasons();
 
     return () => {
       mounted = false;
     };
-  }, [supabase]);
+  }, [supabase, sessionUserId, step]);
 
-  const isLoggedIn = Boolean(sessionUserId);
+  const ensureSessionAfterSignUp = async (nextEmail: string, nextPassword: string) => {
+    if (!supabase) return null;
+
+    const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+      email: nextEmail,
+      password: nextPassword,
+    });
+
+    if (signInError) {
+      throw new Error(
+        `Account created, but sign-in is still required before profile save (${signInError.message}). ` +
+          'If email confirmation is enabled, confirm your email and then log in.',
+      );
+    }
+
+    return signInData.user?.id ?? null;
+  };
 
   const handleProfile = async () => {
     setError(null);
@@ -87,7 +145,12 @@ export default function RegisterPage() {
         });
 
         if (signUpError) throw signUpError;
+
         userId = signUpData.user?.id ?? null;
+        if (!signUpData.session) {
+          userId = await ensureSessionAfterSignUp(email.trim(), password.trim());
+        }
+
         setSessionUserId(userId);
       }
 
@@ -95,26 +158,22 @@ export default function RegisterPage() {
         throw new Error('No authenticated user found. Please log in and try again.');
       }
 
-      if (isLoggedIn) {
-        const { error: updateError } = await supabase
-          .from('profiles')
-          .update({
-            display_name: `${firstName.trim()} ${lastName.trim()}`.trim(),
-            contact: phone.trim(),
-          })
-          .eq('user_id', userId);
+      const { error: profileError } = await supabase.from('profiles').upsert(
+        {
+          user_id: userId,
+          display_name: `${firstName.trim()} ${lastName.trim()}`.trim(),
+          contact: phone.trim(),
+        },
+        { onConflict: 'user_id' },
+      );
 
-        if (updateError) throw updateError;
-      } else {
-        const { error: insertError } = await supabase
-          .from('profiles')
-          .insert({
-            user_id: userId,
-            display_name: `${firstName.trim()} ${lastName.trim()}`.trim(),
-            contact: phone.trim(),
-          });
-
-        if (insertError) throw insertError;
+      if (profileError) {
+        if (profileError.code === '42501') {
+          throw new Error(
+            'Profile save was blocked by Supabase RLS. Confirm you are logged in and that profiles insert/update policy allows auth.uid() = user_id.',
+          );
+        }
+        throw profileError;
       }
 
       return userId;
@@ -159,6 +218,9 @@ export default function RegisterPage() {
         if ((registrationError as any).code === '23505') {
           throw new Error('You are already registered for this season.');
         }
+        if ((registrationError as any).code === '42501') {
+          throw new Error('Registration save was blocked by Supabase RLS. Please log in again and retry.');
+        }
         throw registrationError;
       }
 
@@ -170,7 +232,6 @@ export default function RegisterPage() {
       setLoading(false);
     }
   };
-
 
   return (
     <main>
@@ -194,7 +255,13 @@ export default function RegisterPage() {
         {profileSuccess ? (
           <div>
             <p><strong>Profile successfully created.</strong></p>
-            <button type="button" onClick={() => { setStep(2); setProfileSuccess(false); }}>
+            <button
+              type="button"
+              onClick={() => {
+                setStep(2);
+                setProfileSuccess(false);
+              }}
+            >
               Register for a season
             </button>
           </div>
