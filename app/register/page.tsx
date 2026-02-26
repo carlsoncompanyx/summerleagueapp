@@ -5,6 +5,12 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { getSupabaseSafe } from '../../lib/supabase';
 
+useEffect(() => {
+  console.log('WINDOW?', typeof window !== 'undefined');
+  console.log('URL:', process.env.NEXT_PUBLIC_SUPABASE_URL);
+  console.log('ANON:', process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+}, []);
+
 type Step = 1 | 2 | 3;
 
 type OpenSeason = {
