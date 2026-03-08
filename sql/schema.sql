@@ -88,6 +88,21 @@ create table if not exists public.games (
   created_at timestamptz not null default now()
 );
 
+
+create table if not exists public.game_stats (
+  id uuid primary key default gen_random_uuid(),
+  game_id uuid not null references public.games(id) on delete cascade,
+  season_id uuid,
+  team_id uuid references public.teams(id) on delete set null,
+  player_id uuid references public.players(id) on delete set null,
+  position text,
+  games_played int not null default 0,
+  goals int not null default 0,
+  assists int not null default 0,
+  goals_against int not null default 0,
+  created_at timestamptz not null default now()
+);
+
 create table if not exists public.game_events (
   id uuid primary key default gen_random_uuid(),
   game_id uuid not null references public.games(id) on delete cascade,
@@ -275,6 +290,7 @@ alter table public.players enable row level security;
 alter table public.team_members enable row level security;
 alter table public.games enable row level security;
 alter table public.game_events enable row level security;
+alter table public.game_stats enable row level security;
 alter table public.wallet enable row level security;
 alter table public.wallet_transactions enable row level security;
 alter table public.beer_bucks_packages enable row level security;
@@ -322,6 +338,9 @@ create policy games_admin_write on public.games for all to authenticated using (
 
 create policy events_read on public.game_events for select to authenticated using (true);
 create policy events_admin_write on public.game_events for all to authenticated using (public.is_admin()) with check (public.is_admin());
+
+create policy game_stats_read on public.game_stats for select to authenticated using (true);
+create policy game_stats_admin_write on public.game_stats for all to authenticated using (public.is_admin()) with check (public.is_admin());
 
 create policy wallet_select_self on public.wallet for select to authenticated using (user_id = auth.uid() or public.is_admin());
 create policy wallet_tx_select_self on public.wallet_transactions for select to authenticated using (user_id = auth.uid() or public.is_admin());
