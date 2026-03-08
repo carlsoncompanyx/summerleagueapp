@@ -225,10 +225,10 @@ def test_trades_and_admin_have_requested_management_sections():
     assert 'On the trade block' in trades
     assert 'Open to trade' in trades
     assert 'Untradeable' in trades
-    assert 'Seasons (CRUD)' in admin
-    assert 'Teams (CRUD + CSV)' in admin
-    assert 'Players (CRUD + CSV)' in admin
-    assert 'Games (CRUD + Dynamic Scoring)' in admin
+    assert 'League Operations Dashboard' in admin
+    assert 'Games & Schedule' in admin
+    assert 'Scores' in admin
+    assert 'Trades' in admin
     assert 'Save Score + Stats' in admin
 
 
