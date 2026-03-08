@@ -199,6 +199,7 @@ select[multiple] {
   color: #12344d;
 }
 
+.col-3 { grid-column: span 3; }
 .col-4 { grid-column: span 4; }
 .col-6 { grid-column: span 6; }
 .col-8 { grid-column: span 8; }
@@ -254,6 +255,7 @@ button {
     grid-template-columns: 1fr;
   }
 
+  .col-3,
   .col-4,
   .col-6,
   .col-8,

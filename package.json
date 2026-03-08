@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "test:e2e": "start-server-and-test \"next start -p 3000\" http://127.0.0.1:3000 \"playwright test\"",
-    "test:e2e:ci": "npm run build && playwright install --with-deps chromium && start-server-and-test \"next start -p 3000\" http://127.0.0.1:3000 \"playwright test --project=chromium --reporter=line\""
+    "test:e2e:ci": "npm run build && playwright install --with-deps chromium && start-server-and-test \"next start -p 3000\" http://127.0.0.1:3000 \"playwright test --project=chromium --reporter=line\"",
+    "import:historical": "node scripts/import-historical-stats.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.47.8",

@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import PlayerStatCard from './PlayerStatCard';
 
 type Trade = {
   id: string;
@@ -20,7 +19,7 @@ const STATUS_LABEL: Record<string, string> = {
   declined: 'Declined',
   admin_approved: 'Admin approved',
   admin_declined: 'Admin rejected',
-  executed: 'Executed',
+  completed: 'Completed',
 };
 
 export default function TradesClient() {
@@ -62,7 +61,7 @@ export default function TradesClient() {
   return (
     <main>
       <h1>Trades</h1>
-      <p className="muted">Fantasy-style trade flow: captain proposal → other captain response → admin review → execution.</p>
+      <p className="muted">Captain workflow: proposal → other captain response → league review/admin execution.</p>
       {error && <p style={{ color: '#ff6b6b' }}>{error}</p>}
       {success && <p style={{ color: '#76e8a1' }}>{success}</p>}
 
@@ -141,23 +140,26 @@ export default function TradesClient() {
       </section>
 
       <section className="card">
-        <h2 className="section-title">Player Cards</h2>
-        <div className="grid">
-          {payload.players.slice(0, 20).map((p: any) => (
-            <PlayerStatCard
-              key={p.id}
-              name={p.name}
-              teamName={teamsById.get(p.team_id) || 'Free Agent'}
-              position={p.position}
-              gp={p.stats?.games_played || 0}
-              goals={p.stats?.goals || 0}
-              assists={p.stats?.assists || 0}
-              fantasyPoints={p.stats?.fantasy_points || 0}
-              fantasyAvg={p.stats?.fantasy_points_avg || 0}
-              compact
-            />
-          ))}
-        </div>
+        <h2 className="section-title">League Player Snapshot</h2>
+        <table className="table">
+          <thead>
+            <tr><th>Player</th><th>Team</th><th>Pos</th><th>Jersey</th><th>GP</th><th>G</th><th>A</th><th>P</th></tr>
+          </thead>
+          <tbody>
+            {payload.players.slice(0, 60).map((p: any) => (
+              <tr key={p.id}>
+                <td>{p.name}</td>
+                <td>{teamsById.get(p.team_id) || 'Free Agent'}</td>
+                <td>{p.position || '-'}</td>
+                <td>{p.jersey || '-'}</td>
+                <td>{p.stats?.games_played || 0}</td>
+                <td>{p.stats?.goals || 0}</td>
+                <td>{p.stats?.assists || 0}</td>
+                <td>{p.stats?.points || 0}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </section>
     </main>
   );

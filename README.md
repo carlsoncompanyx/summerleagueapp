@@ -58,3 +58,9 @@ See repository tree from `find . -maxdepth 3 -type f` (excluding `node_modules`)
 ## E2E Testing (Playwright)
 - `npm run test:e2e`: start production server and run Playwright tests.
 - `npm run test:e2e:ci`: build, install Chromium, start server, run headless Playwright tests, stop server.
+
+## Historical season import (fantasy/DFS research)
+- CSV shape supported: `player_name,season,goals,assists`.
+- Import command:
+  - `npm run import:historical -- ./path/to/history.csv`
+- This data is stored in `player_historical_season_stats` and used only by DFS/fantasy valuation fallbacks and player research views.

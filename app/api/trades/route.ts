@@ -30,8 +30,8 @@ export async function GET(req: NextRequest) {
   const [trades, teams, players, stats] = await Promise.all([
     tradesQ,
     admin.from('teams').select('id,name,season_id,captain_user_id'),
-    admin.from('players').select('id,name,team_id,position'),
-    seasonId ? admin.from('fantasy_points_v').select('*').eq('season_id', seasonId) : admin.from('fantasy_points_v').select('*'),
+    admin.from('players').select('id,name,team_id,position,jersey'),
+    seasonId ? admin.from('player_season_stats_v').select('*').eq('season_id', seasonId) : admin.from('player_season_stats_v').select('*'),
   ]);
 
   const playerStats = stats.data ?? [];
