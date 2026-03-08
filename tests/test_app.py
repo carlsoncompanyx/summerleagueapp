@@ -6,7 +6,7 @@ def test_nextjs_app_shell_exists():
     nav = Path('components/NavTabs.tsx').read_text()
     layout = Path('app/layout.tsx').read_text()
     assert 'Emerald Coast Roller League' in layout
-    for tab in ['Home', 'Games', 'Standings', 'Statistics', 'Betting', 'Shit Talk', 'Wallet', 'Trades', 'Admin']:
+    for tab in ['Home', 'Games', 'Standings', 'Statistics', 'Betting', 'DFS', 'Shit Talk', 'Wallet', 'Trades', 'Admin']:
         assert tab in nav
 
 
@@ -73,7 +73,7 @@ def test_next_version_is_patched_for_cve_2025_66478():
 
 
 def test_all_nav_routes_exist_to_prevent_preview_404s():
-    routes = ['registration', 'register', 'schedule', 'standings', 'statistics', 'betting', 'wallet', 'trades', 'chat', 'admin']
+    routes = ['registration', 'register', 'schedule', 'standings', 'statistics', 'betting', 'dfs', 'wallet', 'trades', 'chat', 'admin']
     for route in routes:
         assert Path(f'app/{route}/page.tsx').exists()
 
@@ -121,6 +121,7 @@ def test_playwright_e2e_files_and_scripts_exist():
     assert 'tab-statistics' in navtabs
     assert 'tab-chat' in navtabs
     assert 'tab-betting' in navtabs
+    assert 'tab-dfs' in navtabs
 
     e2e = Path('e2e/navigation.spec.ts').read_text()
     assert 'Emerald Coast Roller League' in e2e
@@ -202,8 +203,8 @@ def test_statistics_page_has_leaderboard_and_team_filter():
     assert '<th>G</th>' in stats_client
     assert '<th>A</th>' in stats_client
     assert '<th>P</th>' in stats_client
-    assert '<th>G/GP</th>' in stats_client
-    assert '<th>P/GP</th>' in stats_client
+    assert '<th>FP</th>' in stats_client
+    assert '<th>FP/GP</th>' in stats_client
     assert '<th>Wins</th>' in stats_client
     assert '<th>GAA</th>' in stats_client
 
@@ -213,18 +214,17 @@ def test_chat_page_has_chatroom_first_and_message_board_actions():
     assert chat.index('Live Chatroom') < chat.index('Message Board')
     assert 'New Post' in chat
     assert 'Refresh' in chat
-    assert 'onClick={sendChat}' in chat
+    assert "chat_send" in chat
 
 
 def test_trades_and_admin_have_requested_management_sections():
     trades = Path('app/trades/page.tsx').read_text()
+    trade_client = Path('components/TradesClient.tsx').read_text()
     admin = Path('components/AdminClient.tsx').read_text()
-    assert 'My Roster' in trades
-    assert 'Players Available for Trade' in trades
-    assert 'All Players' in trades
-    assert 'On the trade block' in trades
-    assert 'Open to trade' in trades
-    assert 'Untradeable' in trades
+    assert 'TradesClient' in trades
+    assert 'Propose Trade' in trade_client
+    assert 'Pending Captain Responses' in trade_client
+    assert 'Approve + Execute' in trade_client
     assert 'League Operations Dashboard' in admin
     assert 'Games & Schedule' in admin
     assert 'Scores' in admin

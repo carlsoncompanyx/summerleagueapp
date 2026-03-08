@@ -1,87 +1,54 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
-type ChatMessage = { id: string; role: string; message: string };
-type BoardTopic = {
-  id: string;
-  title: string;
-  author: string;
-  body: string;
-  replies: { id: string; author: string; message: string }[];
-};
-
-export default function ChatClient({ initialMessages }: { initialMessages: ChatMessage[] }) {
+export default function ChatClient({ seasonId }: { seasonId?: string }) {
   const [chatInput, setChatInput] = useState('');
-  const [liveMessages, setLiveMessages] = useState<ChatMessage[]>(initialMessages);
-
   const [topicTitle, setTopicTitle] = useState('');
   const [topicBody, setTopicBody] = useState('');
-  const [topics, setTopics] = useState<BoardTopic[]>([]);
-  const [activeTopicId, setActiveTopicId] = useState<string | null>(null);
   const [replyInput, setReplyInput] = useState('');
+  const [activeTopicId, setActiveTopicId] = useState<string | null>(null);
+  const [payload, setPayload] = useState<any>({ chat: [], threads: [], posts: [] });
+  const [error, setError] = useState('');
 
-  const activeTopic = topics.find((t) => t.id === activeTopicId) ?? null;
+  async function load() {
+    const res = await fetch(`/api/community${seasonId ? `?season_id=${seasonId}` : ''}`);
+    const json = await res.json();
+    setPayload(json);
+  }
 
-  const sendChat = () => {
-    if (!chatInput.trim()) return;
-    setLiveMessages((prev) => [{ id: String(Date.now()), role: 'PLAYER', message: chatInput }, ...prev]);
-    setChatInput('');
-  };
+  useEffect(() => { load(); }, [seasonId]);
 
-  const createTopic = () => {
-    if (!topicTitle.trim() || !topicBody.trim()) return;
-    const id = `topic-${Date.now()}`;
-    const topic: BoardTopic = {
-      id,
-      title: topicTitle,
-      author: 'FAN',
-      body: topicBody,
-      replies: [],
-    };
-    setTopics((prev) => [topic, ...prev]);
-    setTopicTitle('');
-    setTopicBody('');
-    setActiveTopicId(id);
-  };
+  const activeTopic = useMemo(() => payload.threads.find((t: any) => t.id === activeTopicId), [payload.threads, activeTopicId]);
+  const activePosts = useMemo(() => payload.posts.filter((p: any) => p.thread_id === activeTopicId), [payload.posts, activeTopicId]);
 
-  const postReply = () => {
-    if (!activeTopic || !replyInput.trim()) return;
-    setTopics((prev) =>
-      prev.map((topic) =>
-        topic.id === activeTopic.id
-          ? {
-              ...topic,
-              replies: [...topic.replies, { id: `reply-${Date.now()}`, author: 'PLAYER', message: replyInput }],
-            }
-          : topic,
-      ),
-    );
-    setReplyInput('');
-  };
+  async function post(action: string, body: any) {
+    setError('');
+    const res = await fetch('/api/community', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, payload: body }),
+    });
+    const json = await res.json();
+    if (!res.ok) return setError(json.error || 'Request failed');
+    await load();
+  }
 
   return (
     <div className="grid">
       <section className="card">
         <h2 className="section-title">Live Chatroom</h2>
         <p className="muted">Always-on live chat stream. This is separate from forum topics below.</p>
+        {error && <p style={{ color: '#ff6b6b' }}>{error}</p>}
         <label htmlFor="chat-input">Message</label>
-        <input
-          id="chat-input"
-          value={chatInput}
-          onChange={(e) => setChatInput(e.target.value)}
-          placeholder="Talk some trash..."
-          style={{ width: '100%', marginTop: 6 }}
-        />
+        <input id="chat-input" value={chatInput} onChange={(e) => setChatInput(e.target.value)} placeholder="Talk some trash..." style={{ width: '100%', marginTop: 6 }} />
         <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
-          <button type="button" onClick={sendChat}>Send</button>
+          <button type="button" onClick={() => post('chat_send', { season_id: seasonId, message: chatInput, role: 'FAN' }).then(() => setChatInput(''))}>Send</button>
           <button type="button" onClick={() => setChatInput((v) => `${v} 🔥`)}>Attach GIF</button>
         </div>
         <div style={{ marginTop: 10 }}>
-          {liveMessages.map((m) => (
-            <p key={m.id}><span className="badge">{m.role}</span> {m.message}</p>
-          ))}
-          {liveMessages.length === 0 && <p className="muted">No live chat messages yet.</p>}
+          {payload.chat.map((m: any) => <p key={m.id}><span className="badge">{m.role}</span> {m.message}</p>)}
+          {payload.chat.length === 0 && <p className="muted">No live chat messages yet.</p>}
         </div>
       </section>
 
@@ -95,31 +62,29 @@ export default function ChatClient({ initialMessages }: { initialMessages: ChatM
           <label htmlFor="topic-body">Topic Body</label>
           <textarea id="topic-body" rows={3} value={topicBody} onChange={(e) => setTopicBody(e.target.value)} placeholder="Start a discussion..." />
           <div style={{ display: 'flex', gap: 8 }}>
-            <button type="button" onClick={createTopic}>New Post</button>
-            <button type="button" onClick={() => setTopics((prev) => [...prev])}>Refresh</button>
+            <button type="button" onClick={() => post('thread_create', { season_id: seasonId, title: topicTitle, body: topicBody }).then(() => { setTopicTitle(''); setTopicBody(''); })}>New Post</button>
+            <button type="button" onClick={load}>Refresh</button>
           </div>
         </div>
 
         <div style={{ display: 'grid', gap: 8 }}>
-          {topics.map((topic) => (
+          {payload.threads.map((topic: any) => (
             <button key={topic.id} type="button" onClick={() => setActiveTopicId(topic.id)} style={{ textAlign: 'left' }}>
-              <strong>{topic.title}</strong> <span className="muted">({topic.replies.length} replies)</span>
+              <strong>{topic.title}</strong> <span className="muted">({payload.posts.filter((p: any) => p.thread_id === topic.id).length} replies)</span>
             </button>
           ))}
-          {topics.length === 0 && <p className="muted">No topics yet. Post the first thread.</p>}
+          {payload.threads.length === 0 && <p className="muted">No topics yet. Post the first thread.</p>}
         </div>
 
         {activeTopic && (
           <div style={{ marginTop: 12 }}>
             <h3>{activeTopic.title}</h3>
-            <p><span className="badge">{activeTopic.author}</span> {activeTopic.body}</p>
-            {activeTopic.replies.map((reply) => (
-              <p key={reply.id}><span className="badge">{reply.author}</span> {reply.message}</p>
-            ))}
+            <p>{activeTopic.body}</p>
+            {activePosts.map((reply: any) => <p key={reply.id}>{reply.body}</p>)}
             <label htmlFor="reply-input">Reply</label>
             <textarea id="reply-input" rows={2} value={replyInput} onChange={(e) => setReplyInput(e.target.value)} />
             <div style={{ marginTop: 8 }}>
-              <button type="button" onClick={postReply}>Post Reply</button>
+              <button type="button" onClick={() => post('post_reply', { thread_id: activeTopic.id, body: replyInput }).then(() => setReplyInput(''))}>Post Reply</button>
             </div>
           </div>
         )}

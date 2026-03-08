@@ -1,7 +1,8 @@
 import { getLeagueSnapshot } from '../lib/league-data';
+import { getSeasonStats } from '../lib/stats/getStats';
 
 export default async function HomePage() {
-  const data = await getLeagueSnapshot();
+  const [data, stats] = await Promise.all([getLeagueSnapshot(), getSeasonStats()]);
 
   return (
     <main>
@@ -45,8 +46,8 @@ export default async function HomePage() {
               <table className="table">
                 <thead><tr><th>Player</th><th>Team</th><th>Pos</th></tr></thead>
                 <tbody>
-                  {data.leaders.slice(0, 6).map((p) => (
-                    <tr key={p.id}><td>{p.name}</td><td>{p.team_name}</td><td>{p.position ?? '-'}</td></tr>
+                  {(stats.players ?? []).slice(0, 6).map((p: any) => (
+                    <tr key={p.player_id}><td>{p.name}</td><td>{p.team_name}</td><td>{p.position ?? '-'}</td></tr>
                   ))}
                 </tbody>
               </table>

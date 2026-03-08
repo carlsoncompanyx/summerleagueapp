@@ -1,7 +1,7 @@
-import { getLeagueSnapshot } from '../../lib/league-data';
 import StatisticsClient from '../../components/StatisticsClient';
+import { getSeasonStats } from '../../lib/stats/getStats';
 
 export default async function StatisticsPage() {
-  const data = await getLeagueSnapshot();
+  const data = await getSeasonStats();
   return <StatisticsClient data={data} />;
 }
