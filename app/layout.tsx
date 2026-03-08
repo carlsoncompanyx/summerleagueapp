@@ -2,7 +2,6 @@ import Link from 'next/link';
 
 import './globals.css';
 import NavTabs from '../components/NavTabs';
-import ViewModeSwitcher from '../components/ViewModeSwitcher';
 import { Role } from '../lib/types';
 
 export const metadata = {
@@ -23,7 +22,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <img className="logo-mark" src={logoSrc} alt="Emerald Coast Roller League logo" />
             <NavTabs role={role} />
             <div className="header-actions">
-              <ViewModeSwitcher />
               <div className="bucks-pill">$150 BB</div>
               <Link className="header-auth-link" href="/register">Register</Link>
               <Link className="header-auth-link" href="/login">Login</Link>

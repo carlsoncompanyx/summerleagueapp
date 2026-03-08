@@ -29,21 +29,12 @@ const ITEMS = [
   { label: 'Admin', href: '/admin', testId: 'tab-admin', icon: ShieldAlert },
 ] as const;
 
-const ROLE_BY_VIEW: Record<string, Role> = {
-  fan: 'FAN',
-  user: 'PLAYER',
-  captain: 'CAPTAIN',
-  admin: 'ADMIN',
-};
-
 export default function NavTabs({ role = 'ADMIN' }: { role?: Role }) {
   const pathname = usePathname();
-  const viewParam = typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('view')?.toLowerCase();
-  const activeRole = viewParam && ROLE_BY_VIEW[viewParam] ? ROLE_BY_VIEW[viewParam] : role;
 
   const filtered = ITEMS.filter((item) => {
-    if (item.label === 'Admin') return canViewAdmin(activeRole);
-    if (item.label === 'Trades') return canViewTrades(activeRole);
+    if (item.label === 'Admin') return canViewAdmin(role);
+    if (item.label === 'Trades') return canViewTrades(role);
     return true;
   });
 

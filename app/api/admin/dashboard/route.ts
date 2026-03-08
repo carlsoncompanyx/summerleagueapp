@@ -10,9 +10,7 @@ function isAdminTestModeEnabled() {
 }
 
 async function getCurrentRole() {
-  if (isAdminTestModeEnabled()) {
-    return { userId: 'test-admin', role: 'ADMIN' as const };
-  }
+  if (isAdminTestModeEnabled()) return { userId: 'test-admin', role: 'ADMIN' as const };
 
   const server = createServerSupabaseClient();
   const {
@@ -27,10 +25,13 @@ async function getCurrentRole() {
     .eq('user_id', user.id)
     .maybeSingle();
 
-  return { userId: user.id, role: (profile?.role ?? 'FAN') as 'FAN' | 'PLAYER' | 'CAPTAIN' | 'ADMIN' };
+  return {
+    userId: user.id,
+    role: (profile?.role ?? 'FAN') as 'FAN' | 'PLAYER' | 'CAPTAIN' | 'ADMIN',
+  };
 }
 
-function parseDate(value: string | null | undefined) {
+function toIso(value: string | null | undefined) {
   if (!value) return null;
   const d = new Date(value);
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
@@ -40,16 +41,17 @@ export async function GET() {
   const admin = createAdminSupabaseClient();
   const me = await getCurrentRole();
 
-  const [seasons, teams, players, registrations, games, trades, gameStats, profiles] = await Promise.all([
-    admin.from('seasons').select('*').order('start_date', { ascending: false }),
-    admin.from('teams').select('*').order('name'),
-    admin.from('players').select('*').order('name'),
-    admin.from('registrations').select('*').order('created_at', { ascending: false }),
-    admin.from('games').select('*').order('scheduled_at', { ascending: true }),
-    admin.from('trades').select('*').order('created_at', { ascending: false }),
-    admin.from('game_stats').select('*').order('created_at', { ascending: false }),
-    admin.from('profiles').select('user_id, display_name, role, team_id').order('display_name'),
-  ]);
+  const [seasons, teams, players, registrations, games, trades, gameStats, profiles] =
+    await Promise.all([
+      admin.from('seasons').select('*').order('start_date', { ascending: false }),
+      admin.from('teams').select('*').order('name'),
+      admin.from('players').select('*').order('name'),
+      admin.from('registrations').select('*').order('created_at', { ascending: false }),
+      admin.from('games').select('*').order('scheduled_at', { ascending: true }),
+      admin.from('trades').select('*').order('created_at', { ascending: false }),
+      admin.from('game_stats').select('*').order('created_at', { ascending: false }),
+      admin.from('profiles').select('user_id, display_name, role, team_id').order('display_name'),
+    ]);
 
   return NextResponse.json({
     role: me.role,
@@ -63,16 +65,6 @@ export async function GET() {
     trades: trades.data ?? [],
     gameStats: gameStats.data ?? [],
     profiles: profiles.data ?? [],
-    errors: {
-      seasons: seasons.error?.message,
-      teams: teams.error?.message,
-      players: players.error?.message,
-      registrations: registrations.error?.message,
-      games: games.error?.message,
-      trades: trades.error?.message,
-      gameStats: gameStats.error?.message,
-      profiles: profiles.error?.message,
-    },
   });
 }
 
@@ -82,21 +74,35 @@ export async function POST(req: NextRequest) {
   const me = await getCurrentRole();
 
   const adminOnly = new Set([
-    'season_create', 'season_update', 'season_delete',
-    'team_create', 'team_update', 'team_delete',
-    'player_create', 'player_update', 'player_delete',
-    'registrations_set_status', 'registration_assign_player',
-    'game_create', 'game_update', 'game_delete', 'game_score_submit',
-    'trade_approve', 'trade_reject',
-    'import_players_csv', 'import_games_csv',
+    'season_create',
+    'season_update',
+    'season_delete',
+    'team_create',
+    'team_update',
+    'team_delete',
+    'player_create',
+    'player_update',
+    'player_delete',
+    'registrations_set_status',
+    'registration_assign_player',
+    'game_create',
+    'game_update',
+    'game_delete',
+    'game_score_submit',
+    'trade_approve',
+    'trade_reject',
+    'import_players_csv',
+    'import_games_csv',
   ]);
 
   if (adminOnly.has(action) && me.role !== 'ADMIN') {
     return NextResponse.json({ error: 'Admin access required.' }, { status: 403 });
   }
-
   if (action === 'trade_propose' && !['ADMIN', 'CAPTAIN'].includes(me.role)) {
-    return NextResponse.json({ error: 'Captain or Admin role required to propose trades.' }, { status: 403 });
+    return NextResponse.json(
+      { error: 'Captain or Admin role required to propose trades.' },
+      { status: 403 },
+    );
   }
 
   try {
@@ -136,10 +142,20 @@ export async function POST(req: NextRequest) {
       if (error) throw error;
     } else if (action === 'registration_assign_player') {
       const { registrationId, team_id, name, jersey, position, nickname, user_id } = payload;
-      const { data: reg, error: regError } = await admin.from('registrations').select('*').eq('id', registrationId).single();
+      const { data: reg, error: regError } = await admin
+        .from('registrations')
+        .select('*')
+        .eq('id', registrationId)
+        .single();
       if (regError) throw regError;
-      const seasonTeam = await admin.from('teams').select('id').eq('id', team_id).eq('season_id', reg.season_id).maybeSingle();
-      if (seasonTeam.error || !seasonTeam.data) throw new Error('Assigned team must belong to the same season.');
+
+      const { data: team, error: teamErr } = await admin
+        .from('teams')
+        .select('id')
+        .eq('id', team_id)
+        .eq('season_id', reg.season_id)
+        .maybeSingle();
+      if (teamErr || !team) throw new Error('Assigned team must belong to same season.');
 
       const { error: playerErr } = await admin.from('players').insert({
         team_id,
@@ -151,8 +167,11 @@ export async function POST(req: NextRequest) {
       });
       if (playerErr) throw playerErr;
 
-      const { error: statusErr } = await admin.from('registrations').update({ status: 'approved' }).eq('id', registrationId);
-      if (statusErr) throw statusErr;
+      const { error: regStatusErr } = await admin
+        .from('registrations')
+        .update({ status: 'approved' })
+        .eq('id', registrationId);
+      if (regStatusErr) throw regStatusErr;
     } else if (action === 'game_create') {
       const { error } = await admin.from('games').insert(payload);
       if (error) throw error;
@@ -174,7 +193,7 @@ export async function POST(req: NextRequest) {
       const { error: deleteError } = await admin.from('game_stats').delete().eq('game_id', gameId);
       if (deleteError) throw deleteError;
 
-      if (Array.isArray(stats) && stats.length > 0) {
+      if (Array.isArray(stats) && stats.length) {
         const { data: gameRow } = await admin.from('games').select('season_id').eq('id', gameId).single();
         const { error: statsError } = await admin.from('game_stats').insert(
           stats.map((row: any) => ({
@@ -200,47 +219,83 @@ export async function POST(req: NextRequest) {
       if (error) throw error;
     } else if (action === 'trade_approve') {
       const { tradeId } = payload;
-      const { data: trade, error: tradeReadError } = await admin.from('trades').select('*').eq('id', tradeId).single();
-      if (tradeReadError) throw tradeReadError;
+      const { data: trade, error: tradeErr } = await admin
+        .from('trades')
+        .select('*')
+        .eq('id', tradeId)
+        .single();
+      if (tradeErr) throw tradeErr;
 
       if (Array.isArray(trade.players_out) && trade.players_out.length) {
-        const { error: outErr } = await admin.from('players').update({ team_id: trade.to_team_id }).in('id', trade.players_out);
+        const { error: outErr } = await admin
+          .from('players')
+          .update({ team_id: trade.to_team_id })
+          .in('id', trade.players_out);
         if (outErr) throw outErr;
       }
       if (Array.isArray(trade.players_in) && trade.players_in.length) {
-        const { error: inErr } = await admin.from('players').update({ team_id: trade.from_team_id }).in('id', trade.players_in);
+        const { error: inErr } = await admin
+          .from('players')
+          .update({ team_id: trade.from_team_id })
+          .in('id', trade.players_in);
         if (inErr) throw inErr;
       }
 
-      const { error: tradeError } = await admin.from('trades').update({ status: 'admin_approved' }).eq('id', tradeId);
-      if (tradeError) throw tradeError;
+      const { error: statusErr } = await admin
+        .from('trades')
+        .update({ status: 'admin_approved' })
+        .eq('id', tradeId);
+      if (statusErr) throw statusErr;
     } else if (action === 'trade_reject') {
       const { tradeId } = payload;
-      const { error } = await admin.from('trades').update({ status: 'admin_declined' }).eq('id', tradeId);
+      const { error } = await admin
+        .from('trades')
+        .update({ status: 'admin_declined' })
+        .eq('id', tradeId);
       if (error) throw error;
     } else if (action === 'import_players_csv') {
       const rows = payload.rows as any[];
-      const seasonNameToId = new Map<string, string>();
-      const teamNameBySeason = new Map<string, string>();
-
       const { data: seasons } = await admin.from('seasons').select('id,name');
-      (seasons ?? []).forEach((s: any) => seasonNameToId.set(String(s.name).toLowerCase(), s.id));
       const { data: teams } = await admin.from('teams').select('id,name,season_id');
+
+      const seasonNameToId = new Map<string, string>();
+      (seasons ?? []).forEach((s: any) => seasonNameToId.set(String(s.name).toLowerCase(), s.id));
+      const teamNameBySeason = new Map<string, string>();
       (teams ?? []).forEach((t: any) => teamNameBySeason.set(`${t.season_id}:${String(t.name).toLowerCase()}`, t.id));
 
-      const mapped = rows.map((row, i) => {
+      const mapped: any[] = [];
+      const rowErrors: string[] = [];
+
+      rows.forEach((row, i) => {
         const seasonId = row.season_id || seasonNameToId.get(String(row.season_name || '').toLowerCase());
         const teamId = row.team_id || teamNameBySeason.get(`${seasonId}:${String(row.team_name || '').toLowerCase()}`);
-        if (!teamId) throw new Error(`Row ${i + 1}: could not resolve team.`);
-        return {
+
+        if (!seasonId) {
+          rowErrors.push(`Row ${i + 1}: season could not be resolved.`);
+          return;
+        }
+        if (!teamId) {
+          rowErrors.push(`Row ${i + 1}: team '${row.team_name || row.team_id || ''}' could not be resolved in selected season.`);
+          return;
+        }
+        if (!row.name && !row.display_name) {
+          rowErrors.push(`Row ${i + 1}: player name is required.`);
+          return;
+        }
+
+        mapped.push({
           team_id: teamId,
           user_id: row.user_id || null,
           name: row.name || row.display_name,
           jersey: row.jersey_number ? Number(row.jersey_number) : row.jersey ? Number(row.jersey) : null,
           position: row.position || null,
           nickname: row.nickname || null,
-        };
+        });
       });
+
+      if (rowErrors.length) {
+        return NextResponse.json({ error: 'CSV validation failed', rowErrors }, { status: 400 });
+      }
 
       const { error } = await admin.from('players').insert(mapped);
       if (error) throw error;
@@ -255,18 +310,18 @@ export async function POST(req: NextRequest) {
       (teams ?? []).forEach((t: any) => teamBySeasonName.set(`${t.season_id}:${String(t.name).toLowerCase()}`, t.id));
 
       const mapped: any[] = [];
-      const errors: string[] = [];
+      const rowErrors: string[] = [];
       rows.forEach((row, i) => {
         const seasonId = row.season_id || seasonNameToId.get(String(row.season_name || '').toLowerCase());
         const homeTeam = row.home_team || teamBySeasonName.get(`${seasonId}:${String(row.home_team_name || '').toLowerCase()}`);
         const awayTeam = row.away_team || teamBySeasonName.get(`${seasonId}:${String(row.away_team_name || '').toLowerCase()}`);
         if (!seasonId || !homeTeam || !awayTeam) {
-          errors.push(`Row ${i + 1}: could not resolve season/home/away team.`);
+          rowErrors.push(`Row ${i + 1}: could not resolve season/home/away team.`);
           return;
         }
-        const scheduled = parseDate(row.scheduled_at);
+        const scheduled = toIso(row.scheduled_at);
         if (!scheduled) {
-          errors.push(`Row ${i + 1}: invalid scheduled_at.`);
+          rowErrors.push(`Row ${i + 1}: invalid scheduled_at.`);
           return;
         }
         mapped.push({
@@ -279,8 +334,8 @@ export async function POST(req: NextRequest) {
         });
       });
 
-      if (errors.length) {
-        return NextResponse.json({ error: 'CSV validation failed', rowErrors: errors }, { status: 400 });
+      if (rowErrors.length) {
+        return NextResponse.json({ error: 'CSV validation failed', rowErrors }, { status: 400 });
       }
 
       const { error } = await admin.from('games').insert(mapped);
