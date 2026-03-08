@@ -69,28 +69,40 @@ export default function TradesClient() {
       {['CAPTAIN', 'ADMIN'].includes(payload.actor.role) && (
         <section className="card" style={{ marginBottom: 12 }}>
           <h2 className="section-title">Propose Trade</h2>
-          <div className="grid">
-            <label>From Team</label>
-            <select value={form.from_team_id} onChange={(e) => setForm((f: any) => ({ ...f, from_team_id: e.target.value }))}>
-              <option value="">Select...</option>
-              {payload.teams.map((t: any) => <option key={t.id} value={t.id}>{t.name}</option>)}
-            </select>
-            <label>To Team</label>
-            <select value={form.to_team_id} onChange={(e) => setForm((f: any) => ({ ...f, to_team_id: e.target.value }))}>
-              <option value="">Select...</option>
-              {payload.teams.map((t: any) => <option key={t.id} value={t.id}>{t.name}</option>)}
-            </select>
-            <label>Players Out (Team A)</label>
-            <select multiple value={form.players_out} onChange={(e) => setForm((f: any) => ({ ...f, players_out: Array.from(e.target.selectedOptions).map((o) => o.value) }))}>
-              {playersByTeam(form.from_team_id).map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
-            <label>Players In (Team B)</label>
-            <select multiple value={form.players_in} onChange={(e) => setForm((f: any) => ({ ...f, players_in: Array.from(e.target.selectedOptions).map((o) => o.value) }))}>
-              {playersByTeam(form.to_team_id).map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
-            <label>Message</label>
-            <textarea value={form.message} onChange={(e) => setForm((f: any) => ({ ...f, message: e.target.value }))} rows={3} />
-            <button type="button" onClick={() => doAction('propose', form)}>Submit Proposal</button>
+          <div className="form-grid">
+            <div className="form-field col-6">
+              <label>From Team</label>
+              <select value={form.from_team_id} onChange={(e) => setForm((f: any) => ({ ...f, from_team_id: e.target.value }))}>
+                <option value="">Select...</option>
+                {payload.teams.map((t: any) => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+            </div>
+            <div className="form-field col-6">
+              <label>To Team</label>
+              <select value={form.to_team_id} onChange={(e) => setForm((f: any) => ({ ...f, to_team_id: e.target.value }))}>
+                <option value="">Select...</option>
+                {payload.teams.map((t: any) => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+            </div>
+            <div className="form-field col-6">
+              <label>Players Out (Team A)</label>
+              <select multiple value={form.players_out} onChange={(e) => setForm((f: any) => ({ ...f, players_out: Array.from(e.target.selectedOptions).map((o) => o.value) }))}>
+                {playersByTeam(form.from_team_id).map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </div>
+            <div className="form-field col-6">
+              <label>Players In (Team B)</label>
+              <select multiple value={form.players_in} onChange={(e) => setForm((f: any) => ({ ...f, players_in: Array.from(e.target.selectedOptions).map((o) => o.value) }))}>
+                {playersByTeam(form.to_team_id).map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </div>
+            <div className="form-field col-12">
+              <label>Message</label>
+              <textarea value={form.message} onChange={(e) => setForm((f: any) => ({ ...f, message: e.target.value }))} rows={3} />
+            </div>
+            <div className="form-actions">
+              <button type="button" onClick={() => doAction('propose', form)}>Submit Proposal</button>
+            </div>
           </div>
         </section>
       )}

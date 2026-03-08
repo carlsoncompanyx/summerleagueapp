@@ -204,12 +204,14 @@ export default function AdminClient() {
       <h1>League Operations Dashboard</h1>
       <p className="muted">Role: {role}{testMode ? ' (test mode active)' : ''}</p>
 
-      <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10 }}>
-        <label htmlFor="season-filter">Season Filter</label>
-        <select id="season-filter" value={seasonFilter} onChange={(e) => { setSeasonFilter(e.target.value); setTeamFilter('all'); }}>
-          <option value="all">All Seasons</option>
-          {seasons.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-        </select>
+      <div className="form-grid" style={{ marginBottom: 10 }}>
+        <div className="form-field col-6">
+          <label htmlFor="season-filter">Season Filter</label>
+          <select id="season-filter" value={seasonFilter} onChange={(e) => { setSeasonFilter(e.target.value); setTeamFilter('all'); }}>
+            <option value="all">All Seasons</option>
+            {seasons.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+        </div>
       </div>
 
       <div className="tabs" style={{ marginBottom: 12 }}>
@@ -234,15 +236,15 @@ export default function AdminClient() {
         <section className="card">
           <h2 className="section-title">Seasons</h2>
           <p className="muted"><strong>Season start/end:</strong> official season boundaries. <strong>Registration open/close:</strong> when signups are allowed.</p>
-          <div className="grid">
-            <label>Name</label><input value={seasonForm.name} onChange={(e) => setSeasonForm((s) => ({ ...s, name: e.target.value }))} />
-            <label>Season Start Date</label><input type="date" value={seasonForm.start_date} onChange={(e) => setSeasonForm((s) => ({ ...s, start_date: e.target.value }))} />
-            <label>Season End Date</label><input type="date" value={seasonForm.end_date} onChange={(e) => setSeasonForm((s) => ({ ...s, end_date: e.target.value }))} />
-            <label>Registration Opens At</label><input type="datetime-local" value={seasonForm.registration_open_at} onChange={(e) => setSeasonForm((s) => ({ ...s, registration_open_at: e.target.value }))} />
-            <label>Registration Closes At</label><input type="datetime-local" value={seasonForm.registration_close_at} onChange={(e) => setSeasonForm((s) => ({ ...s, registration_close_at: e.target.value }))} />
-            <label>Waiver Text</label><textarea value={seasonForm.waiver_text} onChange={(e) => setSeasonForm((s) => ({ ...s, waiver_text: e.target.value }))} />
-            <label>Rules</label><textarea value={seasonForm.rules} onChange={(e) => setSeasonForm((s) => ({ ...s, rules: e.target.value }))} />
-            <button disabled={!canAdmin || busy} onClick={() => saveAndReload(seasonForm.id ? 'season_update' : 'season_create', seasonForm)}>{seasonForm.id ? 'Update Season' : 'Create Season'}</button>
+          <div className="form-grid">
+            <div className="form-field col-6"><label>Name</label><input value={seasonForm.name} onChange={(e) => setSeasonForm((s) => ({ ...s, name: e.target.value }))} /></div>
+            <div className="form-field col-6"><label>Season Start Date</label><input type="date" value={seasonForm.start_date} onChange={(e) => setSeasonForm((s) => ({ ...s, start_date: e.target.value }))} /></div>
+            <div className="form-field col-6"><label>Season End Date</label><input type="date" value={seasonForm.end_date} onChange={(e) => setSeasonForm((s) => ({ ...s, end_date: e.target.value }))} /></div>
+            <div className="form-field col-6"><label>Registration Opens At</label><input type="datetime-local" value={seasonForm.registration_open_at} onChange={(e) => setSeasonForm((s) => ({ ...s, registration_open_at: e.target.value }))} /></div>
+            <div className="form-field col-6"><label>Registration Closes At</label><input type="datetime-local" value={seasonForm.registration_close_at} onChange={(e) => setSeasonForm((s) => ({ ...s, registration_close_at: e.target.value }))} /></div>
+            <div className="form-field col-12"><label>Waiver Text</label><textarea value={seasonForm.waiver_text} onChange={(e) => setSeasonForm((s) => ({ ...s, waiver_text: e.target.value }))} /></div>
+            <div className="form-field col-12"><label>Rules</label><textarea value={seasonForm.rules} onChange={(e) => setSeasonForm((s) => ({ ...s, rules: e.target.value }))} /></div>
+            <div className="form-actions"><button disabled={!canAdmin || busy} onClick={() => saveAndReload(seasonForm.id ? 'season_update' : 'season_create', seasonForm)}>{seasonForm.id ? 'Update Season' : 'Create Season'}</button></div>
           </div>
           <table className="table"><thead><tr><th>Name</th><th>Dates</th><th>Registration Window</th><th>Actions</th></tr></thead><tbody>{seasons.map((s) => <tr key={s.id}><td>{s.name}</td><td>{s.start_date} → {s.end_date}</td><td>{s.registration_open_at ?? '-'} → {s.registration_close_at ?? '-'}</td><td><button onClick={() => setSeasonForm({ id: s.id, name: s.name, start_date: String(s.start_date).slice(0, 10), end_date: String(s.end_date).slice(0, 10), registration_open_at: s.registration_open_at ? String(s.registration_open_at).slice(0, 16) : '', registration_close_at: s.registration_close_at ? String(s.registration_close_at).slice(0, 16) : '', waiver_text: s.waiver_text ?? '', rules: s.rules ?? '' })}>Edit</button> <button disabled={!canAdmin} onClick={() => confirm('Delete season?') && saveAndReload('season_delete', { id: s.id })}>Delete</button></td></tr>)}</tbody></table>
         </section>
@@ -251,12 +253,12 @@ export default function AdminClient() {
       {activeTab === 'teams' && (
         <section className="card">
           <h2 className="section-title">Teams</h2>
-          <div className="grid">
-            <label>Season</label><select value={teamForm.season_id} onChange={(e) => setTeamForm((t) => ({ ...t, season_id: e.target.value }))}><option value="">Select season</option>{seasons.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
-            <label>Team Name</label><input value={teamForm.name} onChange={(e) => setTeamForm((t) => ({ ...t, name: e.target.value }))} />
-            <label>Captain</label><select value={teamForm.captain_user_id} onChange={(e) => setTeamForm((t) => ({ ...t, captain_user_id: e.target.value }))}><option value="">Select captain</option>{profiles.map((p) => <option key={p.user_id} value={p.user_id}>{p.display_name}</option>)}</select>
-            <label>Logo URL</label><input value={teamForm.logo_url} onChange={(e) => setTeamForm((t) => ({ ...t, logo_url: e.target.value }))} />
-            <button disabled={!canAdmin || busy} onClick={() => saveAndReload(teamForm.id ? 'team_update' : 'team_create', { ...teamForm, captain_user_id: teamForm.captain_user_id || null, logo_url: teamForm.logo_url || null })}>{teamForm.id ? 'Update Team' : 'Create Team'}</button>
+          <div className="form-grid">
+            <div className="form-field col-6"><label>Season</label><select value={teamForm.season_id} onChange={(e) => setTeamForm((t) => ({ ...t, season_id: e.target.value }))}><option value="">Select season</option>{seasons.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
+            <div className="form-field col-6"><label>Team Name</label><input value={teamForm.name} onChange={(e) => setTeamForm((t) => ({ ...t, name: e.target.value }))} /></div>
+            <div className="form-field col-6"><label>Captain</label><select value={teamForm.captain_user_id} onChange={(e) => setTeamForm((t) => ({ ...t, captain_user_id: e.target.value }))}><option value="">Select captain</option>{profiles.map((p) => <option key={p.user_id} value={p.user_id}>{p.display_name}</option>)}</select></div>
+            <div className="form-field col-6"><label>Logo URL</label><input value={teamForm.logo_url} onChange={(e) => setTeamForm((t) => ({ ...t, logo_url: e.target.value }))} /></div>
+            <div className="form-actions"><button disabled={!canAdmin || busy} onClick={() => saveAndReload(teamForm.id ? 'team_update' : 'team_create', { ...teamForm, captain_user_id: teamForm.captain_user_id || null, logo_url: teamForm.logo_url || null })}>{teamForm.id ? 'Update Team' : 'Create Team'}</button></div>
           </div>
           <table className="table"><thead><tr><th>Team</th><th>Season</th><th>Captain</th><th>Actions</th></tr></thead><tbody>{seasonTeams.map((t) => <tr key={t.id}><td>{t.name}</td><td>{seasons.find((s) => s.id === t.season_id)?.name}</td><td>{t.captain_user_id ? profileNameById.get(t.captain_user_id) ?? t.captain_user_id : '-'}</td><td><button onClick={() => setTeamForm({ id: t.id, season_id: t.season_id, name: t.name, captain_user_id: t.captain_user_id ?? '', logo_url: t.logo_url ?? '' })}>Edit</button> <button disabled={!canAdmin} onClick={() => confirm('Delete team?') && saveAndReload('team_delete', { id: t.id })}>Delete</button></td></tr>)}</tbody></table>
         </section>
@@ -265,22 +267,24 @@ export default function AdminClient() {
       {activeTab === 'players' && (
         <section className="card">
           <h2 className="section-title">Players</h2>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-            <label>Team filter</label>
-            <select value={teamFilter} onChange={(e) => setTeamFilter(e.target.value)}>
-              <option value="all">All Teams</option>
-              {seasonTeams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-            </select>
-            <button onClick={() => setCsvModal('players')}>Import Players CSV</button>
+          <div className="form-grid" style={{ marginBottom: 8 }}>
+            <div className="form-field col-6">
+              <label>Team filter</label>
+              <select value={teamFilter} onChange={(e) => setTeamFilter(e.target.value)}>
+                <option value="all">All Teams</option>
+                {seasonTeams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+            </div>
+            <div className="form-actions"><button onClick={() => setCsvModal('players')}>Import Players CSV</button></div>
           </div>
-          <div className="grid">
-            <label>Team</label><select value={playerForm.team_id} onChange={(e) => setPlayerForm((p) => ({ ...p, team_id: e.target.value }))}><option value="">Select team</option>{seasonTeams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select>
-            <label>Display Name</label><input value={playerForm.name} onChange={(e) => setPlayerForm((p) => ({ ...p, name: e.target.value }))} />
-            <label>Jersey Number</label><input value={playerForm.jersey} onChange={(e) => setPlayerForm((p) => ({ ...p, jersey: e.target.value }))} />
-            <label>Position</label><input value={playerForm.position} onChange={(e) => setPlayerForm((p) => ({ ...p, position: e.target.value }))} />
-            <label>Nickname</label><input value={playerForm.nickname} onChange={(e) => setPlayerForm((p) => ({ ...p, nickname: e.target.value }))} />
-            <label>Linked User (optional)</label><select value={playerForm.user_id} onChange={(e) => setPlayerForm((p) => ({ ...p, user_id: e.target.value }))}><option value="">Select user</option>{profiles.map((pr) => <option key={pr.user_id} value={pr.user_id}>{pr.display_name}</option>)}</select>
-            <button disabled={!canAdmin || busy} onClick={() => saveAndReload(playerForm.id ? 'player_update' : 'player_create', { ...playerForm, team_id: playerForm.team_id || null, user_id: playerForm.user_id || null, jersey: playerForm.jersey ? Number(playerForm.jersey) : null, position: playerForm.position || null, nickname: playerForm.nickname || null })}>{playerForm.id ? 'Update Player' : 'Create Player'}</button>
+          <div className="form-grid">
+            <div className="form-field col-6"><label>Team</label><select value={playerForm.team_id} onChange={(e) => setPlayerForm((p) => ({ ...p, team_id: e.target.value }))}><option value="">Select team</option>{seasonTeams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></div>
+            <div className="form-field col-6"><label>Display Name</label><input value={playerForm.name} onChange={(e) => setPlayerForm((p) => ({ ...p, name: e.target.value }))} /></div>
+            <div className="form-field col-4"><label>Jersey Number</label><input value={playerForm.jersey} onChange={(e) => setPlayerForm((p) => ({ ...p, jersey: e.target.value }))} /></div>
+            <div className="form-field col-4"><label>Position</label><input value={playerForm.position} onChange={(e) => setPlayerForm((p) => ({ ...p, position: e.target.value }))} /></div>
+            <div className="form-field col-4"><label>Nickname</label><input value={playerForm.nickname} onChange={(e) => setPlayerForm((p) => ({ ...p, nickname: e.target.value }))} /></div>
+            <div className="form-field col-6"><label>Linked User (optional)</label><select value={playerForm.user_id} onChange={(e) => setPlayerForm((p) => ({ ...p, user_id: e.target.value }))}><option value="">Select user</option>{profiles.map((pr) => <option key={pr.user_id} value={pr.user_id}>{pr.display_name}</option>)}</select></div>
+            <div className="form-actions"><button disabled={!canAdmin || busy} onClick={() => saveAndReload(playerForm.id ? 'player_update' : 'player_create', { ...playerForm, team_id: playerForm.team_id || null, user_id: playerForm.user_id || null, jersey: playerForm.jersey ? Number(playerForm.jersey) : null, position: playerForm.position || null, nickname: playerForm.nickname || null })}>{playerForm.id ? 'Update Player' : 'Create Player'}</button></div>
           </div>
           <table className="table"><thead><tr><th>Name</th><th>Team</th><th>Position</th><th>Jersey</th><th>Actions</th></tr></thead><tbody>{seasonPlayers.map((p) => <tr key={p.id}><td>{p.name}</td><td>{teamNameById.get(p.team_id ?? '') ?? '-'}</td><td>{p.position ?? '-'}</td><td>{p.jersey ?? '-'}</td><td><button onClick={() => setPlayerForm({ id: p.id, team_id: p.team_id ?? '', user_id: p.user_id ?? '', name: p.name, jersey: p.jersey?.toString() ?? '', position: p.position ?? '', nickname: p.nickname ?? '' })}>Edit</button> <button disabled={!canAdmin} onClick={() => confirm('Delete player?') && saveAndReload('player_delete', { id: p.id })}>Delete</button></td></tr>)}</tbody></table>
         </section>
@@ -297,14 +301,14 @@ export default function AdminClient() {
         <section className="card">
           <h2 className="section-title">Games & Schedule</h2>
           <button onClick={() => setCsvModal('games')}>Import Games CSV</button>
-          <div className="grid" style={{ marginTop: 8 }}>
-            <label>Season</label><select value={gameForm.season_id} onChange={(e) => setGameForm((g) => ({ ...g, season_id: e.target.value }))}><option value="">Select season</option>{seasons.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
-            <label>Home Team</label><select value={gameForm.home_team} onChange={(e) => setGameForm((g) => ({ ...g, home_team: e.target.value }))}><option value="">Select home team</option>{teams.filter((t) => !gameForm.season_id || t.season_id === gameForm.season_id).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select>
-            <label>Away Team</label><select value={gameForm.away_team} onChange={(e) => setGameForm((g) => ({ ...g, away_team: e.target.value }))}><option value="">Select away team</option>{teams.filter((t) => !gameForm.season_id || t.season_id === gameForm.season_id).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select>
-            <label>Scheduled At</label><input type="datetime-local" value={gameForm.scheduled_at} onChange={(e) => setGameForm((g) => ({ ...g, scheduled_at: e.target.value }))} />
-            <label>Location</label><input value={gameForm.location} onChange={(e) => setGameForm((g) => ({ ...g, location: e.target.value }))} />
-            <label>Status</label><select value={gameForm.status} onChange={(e) => setGameForm((g) => ({ ...g, status: e.target.value }))}><option>SCHEDULED</option><option>LIVE</option><option>FINAL</option><option>CANCELED</option></select>
-            <button disabled={!canAdmin || busy} onClick={() => saveAndReload(gameForm.id ? 'game_update' : 'game_create', { ...gameForm, location: gameForm.location || null })}>{gameForm.id ? 'Update Game' : 'Create Game'}</button>
+          <div className="form-grid" style={{ marginTop: 8 }}>
+            <div className="form-field col-6"><label>Season</label><select value={gameForm.season_id} onChange={(e) => setGameForm((g) => ({ ...g, season_id: e.target.value }))}><option value="">Select season</option>{seasons.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
+            <div className="form-field col-6"><label>Home Team</label><select value={gameForm.home_team} onChange={(e) => setGameForm((g) => ({ ...g, home_team: e.target.value }))}><option value="">Select home team</option>{teams.filter((t) => !gameForm.season_id || t.season_id === gameForm.season_id).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></div>
+            <div className="form-field col-6"><label>Away Team</label><select value={gameForm.away_team} onChange={(e) => setGameForm((g) => ({ ...g, away_team: e.target.value }))}><option value="">Select away team</option>{teams.filter((t) => !gameForm.season_id || t.season_id === gameForm.season_id).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></div>
+            <div className="form-field col-6"><label>Scheduled At</label><input type="datetime-local" value={gameForm.scheduled_at} onChange={(e) => setGameForm((g) => ({ ...g, scheduled_at: e.target.value }))} /></div>
+            <div className="form-field col-6"><label>Location</label><input value={gameForm.location} onChange={(e) => setGameForm((g) => ({ ...g, location: e.target.value }))} /></div>
+            <div className="form-field col-6"><label>Status</label><select value={gameForm.status} onChange={(e) => setGameForm((g) => ({ ...g, status: e.target.value }))}><option>SCHEDULED</option><option>LIVE</option><option>FINAL</option><option>CANCELED</option></select></div>
+            <div className="form-actions"><button disabled={!canAdmin || busy} onClick={() => saveAndReload(gameForm.id ? 'game_update' : 'game_create', { ...gameForm, location: gameForm.location || null })}>{gameForm.id ? 'Update Game' : 'Create Game'}</button></div>
           </div>
           <table className="table"><thead><tr><th>Date</th><th>Matchup</th><th>Status</th><th>Actions</th></tr></thead><tbody>{filteredGames.map((g) => <tr key={g.id}><td>{new Date(g.scheduled_at).toLocaleString()}</td><td>{teamNameById.get(g.home_team)} vs {teamNameById.get(g.away_team)}</td><td>{g.status === 'FINAL' ? 'Completed' : g.status}</td><td><button onClick={() => setGameForm({ id: g.id, season_id: g.season_id, home_team: g.home_team, away_team: g.away_team, scheduled_at: String(g.scheduled_at).slice(0, 16), location: g.location ?? '', status: g.status })}>Edit</button> <button disabled={!canAdmin} onClick={() => confirm('Delete game?') && saveAndReload('game_delete', { id: g.id })}>Delete</button> <button onClick={() => openScoreEditor(g)}>Scores</button></td></tr>)}</tbody></table>
         </section>
@@ -330,14 +334,14 @@ export default function AdminClient() {
         <div className="modal-overlay">
           <div className="card modal-card">
             <h2 className="section-title">Assign Registration to Team</h2>
-            <div className="grid">
-              <label>Team</label><select value={assignForm.team_id} onChange={(e) => setAssignForm((a) => ({ ...a, team_id: e.target.value }))}><option value="">Select team</option>{seasonTeams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select>
-              <label>Player Name</label><input value={assignForm.name} onChange={(e) => setAssignForm((a) => ({ ...a, name: e.target.value }))} />
-              <label>Jersey</label><input value={assignForm.jersey} onChange={(e) => setAssignForm((a) => ({ ...a, jersey: e.target.value }))} />
-              <label>Position</label><input value={assignForm.position} onChange={(e) => setAssignForm((a) => ({ ...a, position: e.target.value }))} />
-              <label>Nickname</label><input value={assignForm.nickname} onChange={(e) => setAssignForm((a) => ({ ...a, nickname: e.target.value }))} />
+            <div className="form-grid">
+              <div className="form-field col-6"><label>Team</label><select value={assignForm.team_id} onChange={(e) => setAssignForm((a) => ({ ...a, team_id: e.target.value }))}><option value="">Select team</option>{seasonTeams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></div>
+              <div className="form-field col-6"><label>Player Name</label><input value={assignForm.name} onChange={(e) => setAssignForm((a) => ({ ...a, name: e.target.value }))} /></div>
+              <div className="form-field col-4"><label>Jersey</label><input value={assignForm.jersey} onChange={(e) => setAssignForm((a) => ({ ...a, jersey: e.target.value }))} /></div>
+              <div className="form-field col-4"><label>Position</label><input value={assignForm.position} onChange={(e) => setAssignForm((a) => ({ ...a, position: e.target.value }))} /></div>
+              <div className="form-field col-4"><label>Nickname</label><input value={assignForm.nickname} onChange={(e) => setAssignForm((a) => ({ ...a, nickname: e.target.value }))} /></div>
             </div>
-            <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+            <div className="form-actions" style={{ marginTop: 10 }}>
               <button onClick={() => saveAndReload('registration_assign_player', { registrationId: assignRegId, ...assignForm }, () => setAssignRegId(null))}>Assign</button>
               <button onClick={() => setAssignRegId(null)}>Cancel</button>
             </div>
@@ -349,9 +353,9 @@ export default function AdminClient() {
         <div className="modal-overlay">
           <div className="card modal-card" style={{ maxWidth: 1150 }}>
             <h2 className="section-title">Score Entry: {teamNameById.get(scoreGame.home_team)} vs {teamNameById.get(scoreGame.away_team)}</h2>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              <div><label>Home Score ({teamNameById.get(scoreGame.home_team)})</label><input type="number" value={homeScore} onChange={(e) => setHomeScore(e.target.value)} /></div>
-              <div><label>Away Score ({teamNameById.get(scoreGame.away_team)})</label><input type="number" value={awayScore} onChange={(e) => setAwayScore(e.target.value)} /></div>
+            <div className="form-grid">
+              <div className="form-field col-6"><label>Home Score ({teamNameById.get(scoreGame.home_team)})</label><input type="number" value={homeScore} onChange={(e) => setHomeScore(e.target.value)} /></div>
+              <div className="form-field col-6"><label>Away Score ({teamNameById.get(scoreGame.away_team)})</label><input type="number" value={awayScore} onChange={(e) => setAwayScore(e.target.value)} /></div>
             </div>
 
             <h3>{teamNameById.get(scoreGame.home_team)}</h3>
@@ -359,7 +363,7 @@ export default function AdminClient() {
             <h3>{teamNameById.get(scoreGame.away_team)}</h3>
             <table className="table"><thead><tr><th>Player</th><th>Position</th><th>GP</th><th>G</th><th>A</th><th>GA</th></tr></thead><tbody>{awayPlayers.map((p) => <tr key={p.id}><td>{p.name}</td><td>{p.position ?? '-'}</td><td><input value={statsRows[p.id]?.games_played ?? ''} onChange={(e) => setStatsRows((m) => ({ ...m, [p.id]: { ...(m[p.id] ?? { games_played: '', goals: '', assists: '', goals_against: '' }), games_played: e.target.value } }))} /></td><td><input value={statsRows[p.id]?.goals ?? ''} onChange={(e) => setStatsRows((m) => ({ ...m, [p.id]: { ...(m[p.id] ?? { games_played: '', goals: '', assists: '', goals_against: '' }), goals: e.target.value } }))} /></td><td><input value={statsRows[p.id]?.assists ?? ''} onChange={(e) => setStatsRows((m) => ({ ...m, [p.id]: { ...(m[p.id] ?? { games_played: '', goals: '', assists: '', goals_against: '' }), assists: e.target.value } }))} /></td><td><input value={statsRows[p.id]?.goals_against ?? ''} onChange={(e) => setStatsRows((m) => ({ ...m, [p.id]: { ...(m[p.id] ?? { games_played: '', goals: '', assists: '', goals_against: '' }), goals_against: e.target.value } }))} /></td></tr>)}</tbody></table>
 
-            <div style={{ display: 'flex', gap: 8 }}>
+            <div className="form-actions">
               <button onClick={() => saveAndReload('game_score_submit', { gameId: scoreGame.id, homeScore: Number(homeScore || 0), awayScore: Number(awayScore || 0), stats: Object.entries(statsRows).map(([player_id, row]) => ({ player_id, team_id: players.find((p) => p.id === player_id)?.team_id, position: players.find((p) => p.id === player_id)?.position, ...row })) }, () => { setScoreGameId(null); setSuccess('Score saved. Game marked as Completed.'); })}>Save Score + Stats</button>
               <button onClick={() => setScoreGameId(null)}>Close</button>
             </div>
@@ -372,9 +376,9 @@ export default function AdminClient() {
           <div className="card modal-card">
             <h2 className="section-title">Import {csvModal === 'players' ? 'Players' : 'Games'} CSV</h2>
             <input type="file" accept=".csv" onChange={(e) => onCsvFile(e.target.files?.[0] ?? null)} />
-            <div className="grid" style={{ marginTop: 10 }}>
+            <div className="form-grid" style={{ marginTop: 10 }}>
               {Object.keys(csvMapping).map((target) => (
-                <div key={target}>
+                <div key={target} className="form-field col-6">
                   <label>{target}</label>
                   <select value={csvMapping[target] || ''} onChange={(e) => setCsvMapping((m) => ({ ...m, [target]: e.target.value }))}>
                     <option value="">-- CSV column --</option>
@@ -384,7 +388,7 @@ export default function AdminClient() {
               ))}
             </div>
             {csvRowErrors.length > 0 && <div className="card" style={{ marginTop: 8 }}>{csvRowErrors.map((err, i) => <p key={i}>{err}</p>)}</div>}
-            <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+            <div className="form-actions" style={{ marginTop: 10 }}>
               <button onClick={async () => {
                 const mappedRows = csvRows.map((row) => {
                   const out: any = {};

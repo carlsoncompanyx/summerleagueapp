@@ -65,17 +65,21 @@ export default function DfsClient() {
 
       <section className="card" style={{ marginBottom: 12 }}>
         <h2 className="section-title">Lineup Builder</h2>
-        <label>Lineup Name</label>
-        <input value={lineupName} onChange={(e) => setLineupName(e.target.value)} />
-        {slots.map((s, idx) => (
-          <div key={s.slot} style={{ marginTop: 8 }}>
-            <label>{s.slot}</label>
-            <select value={s.player_id} onChange={(e) => setSlots((prev) => prev.map((row, i) => i === idx ? { ...row, player_id: e.target.value } : row))}>
-              <option value="">Select player...</option>
-              {data.slatePlayers.map((p: any) => <option key={`${s.slot}-${p.player_id}`} value={p.player_id}>{p.player?.name || p.player_id.slice(0, 8)} · {p.player?.position || p.position} · ${p.salary}</option>)}
-            </select>
+        <div className="form-grid">
+          <div className="form-field col-12">
+            <label>Lineup Name</label>
+            <input value={lineupName} onChange={(e) => setLineupName(e.target.value)} />
           </div>
-        ))}
+          {slots.map((s, idx) => (
+            <div key={s.slot} className="form-field col-6">
+              <label>{s.slot}</label>
+              <select value={s.player_id} onChange={(e) => setSlots((prev) => prev.map((row, i) => i === idx ? { ...row, player_id: e.target.value } : row))}>
+                <option value="">Select player...</option>
+                {data.slatePlayers.map((p: any) => <option key={`${s.slot}-${p.player_id}`} value={p.player_id}>{p.player?.name || p.player_id.slice(0, 8)} · {p.player?.position || p.position} · ${p.salary}</option>)}
+              </select>
+            </div>
+          ))}
+        </div>
         <p className="muted">Salary used: {salaryUsed} / {currentContest?.salary_cap ?? '—'}</p>
         <button type="button" onClick={submit} disabled={!selectedContest}>Submit Entry</button>
       </section>

@@ -40,8 +40,12 @@ export default function ChatClient({ seasonId }: { seasonId?: string }) {
         <h2 className="section-title">Live Chatroom</h2>
         <p className="muted">Always-on live chat stream. This is separate from forum topics below.</p>
         {error && <p style={{ color: '#ff6b6b' }}>{error}</p>}
-        <label htmlFor="chat-input">Message</label>
-        <input id="chat-input" value={chatInput} onChange={(e) => setChatInput(e.target.value)} placeholder="Talk some trash..." style={{ width: '100%', marginTop: 6 }} />
+        <div className="form-grid">
+          <div className="form-field col-12">
+            <label htmlFor="chat-input">Message</label>
+            <input id="chat-input" value={chatInput} onChange={(e) => setChatInput(e.target.value)} placeholder="Talk some trash..." />
+          </div>
+        </div>
         <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
           <button type="button" onClick={() => post('chat_send', { season_id: seasonId, message: chatInput, role: 'FAN' }).then(() => setChatInput(''))}>Send</button>
           <button type="button" onClick={() => setChatInput((v) => `${v} 🔥`)}>Attach GIF</button>
@@ -56,12 +60,16 @@ export default function ChatClient({ seasonId }: { seasonId?: string }) {
         <h2 className="section-title">Message Board</h2>
         <p className="muted">Forum topics and threaded replies (not linked to live chat).</p>
 
-        <div style={{ display: 'grid', gap: 8, marginBottom: 12 }}>
-          <label htmlFor="topic-title">Topic Title</label>
-          <input id="topic-title" value={topicTitle} onChange={(e) => setTopicTitle(e.target.value)} placeholder="Ex: Week 3 predictions" />
-          <label htmlFor="topic-body">Topic Body</label>
-          <textarea id="topic-body" rows={3} value={topicBody} onChange={(e) => setTopicBody(e.target.value)} placeholder="Start a discussion..." />
-          <div style={{ display: 'flex', gap: 8 }}>
+        <div className="form-grid" style={{ marginBottom: 12 }}>
+          <div className="form-field col-12">
+            <label htmlFor="topic-title">Topic Title</label>
+            <input id="topic-title" value={topicTitle} onChange={(e) => setTopicTitle(e.target.value)} placeholder="Ex: Week 3 predictions" />
+          </div>
+          <div className="form-field col-12">
+            <label htmlFor="topic-body">Topic Body</label>
+            <textarea id="topic-body" rows={3} value={topicBody} onChange={(e) => setTopicBody(e.target.value)} placeholder="Start a discussion..." />
+          </div>
+          <div className="form-actions">
             <button type="button" onClick={() => post('thread_create', { season_id: seasonId, title: topicTitle, body: topicBody }).then(() => { setTopicTitle(''); setTopicBody(''); })}>New Post</button>
             <button type="button" onClick={load}>Refresh</button>
           </div>
@@ -81,9 +89,11 @@ export default function ChatClient({ seasonId }: { seasonId?: string }) {
             <h3>{activeTopic.title}</h3>
             <p>{activeTopic.body}</p>
             {activePosts.map((reply: any) => <p key={reply.id}>{reply.body}</p>)}
-            <label htmlFor="reply-input">Reply</label>
-            <textarea id="reply-input" rows={2} value={replyInput} onChange={(e) => setReplyInput(e.target.value)} />
-            <div style={{ marginTop: 8 }}>
+            <div className="form-field col-12">
+              <label htmlFor="reply-input">Reply</label>
+              <textarea id="reply-input" rows={2} value={replyInput} onChange={(e) => setReplyInput(e.target.value)} />
+            </div>
+            <div style={{ marginTop: 8 }} className="form-actions">
               <button type="button" onClick={() => post('post_reply', { thread_id: activeTopic.id, body: replyInput }).then(() => setReplyInput(''))}>Post Reply</button>
             </div>
           </div>
