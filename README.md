@@ -3,6 +3,7 @@
 Mobile-first PWA-first Next.js app with Supabase auth/data/realtime/storage and Stripe Beer Bucks purchase flow.
 
 ## Features shipped
+- Stripe is feature-flagged off by default to avoid preview/runtime failures until payment launch.
 - Role model: `ADMIN`, `CAPTAIN`, `PLAYER`, `FAN` with UI gating helpers.
 - Tabs: Home, Schedule, Standings, Leaders, Betting, Wallet, Trades, Shit Talk, Admin.
 - PWA basics: `manifest.json`, service worker registration, install prompt helper.
@@ -24,6 +25,7 @@ Mobile-first PWA-first Next.js app with Supabase auth/data/realtime/storage and 
 - `STRIPE_WEBHOOK_SECRET`
 - `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`
 - `APP_BASE_URL`
+- `STRIPE_ENABLED` (`false` by default; set `true` to activate checkout/webhook processing)
 
 ## Local dev
 1. Create a Supabase project.
@@ -51,3 +53,8 @@ All league scheduling and display assumptions are `America/Chicago`.
 
 ## Output tree
 See repository tree from `find . -maxdepth 3 -type f` (excluding `node_modules`).
+
+
+## E2E Testing (Playwright)
+- `npm run test:e2e`: start production server and run Playwright tests.
+- `npm run test:e2e:ci`: build, install Chromium, start server, run headless Playwright tests, stop server.

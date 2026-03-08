@@ -1,11 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
-import { supabaseAdmin } from '@/lib/supabase';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '');
+import { isStripeEnabled } from '../../../../lib/flags';
+import { createAdminSupabaseClient } from '../../../../lib/supabase/admin';
+
+function getStripe() {
+  const key = process.env.STRIPE_SECRET_KEY;
+  if (!key) throw new Error('STRIPE_SECRET_KEY is required.');
+  return new Stripe(key);
+}
 
 export async function POST(req: NextRequest) {
+  if (!isStripeEnabled()) {
+    return NextResponse.json(
+      { error: 'Stripe payments are disabled for this environment.' },
+      { status: 503 }
+    );
+  }
+
+  const stripe = getStripe();
   const { packageId, userId } = await req.json();
+  const supabaseAdmin = createAdminSupabaseClient();
   const { data: pkg } = await supabaseAdmin
     .from('beer_bucks_packages')
     .select('*')

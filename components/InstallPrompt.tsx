@@ -15,5 +15,5 @@ export default function InstallPrompt() {
   }, []);
 
   if (!deferred) return null;
-  return <button className="rounded bg-emerald-700 px-3 py-2 text-white" onClick={() => deferred.prompt()}>Install App</button>;
+  return <button className="install-btn" onClick={() => deferred.prompt()}>Install App</button>;
 }
