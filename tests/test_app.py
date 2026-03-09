@@ -171,12 +171,10 @@ def test_chat_has_message_board_and_chatroom_sections():
     assert 'Live Chatroom' in chat
 
 
-def test_registration_page_explains_access_vs_season_rules():
+def test_registration_page_redirects_to_players_based_register_flow():
     registration = Path('app/registration/page.tsx').read_text()
-    assert 'Create your site account and register for the current season in one form.' in registration
-    assert 'Already a member? Register for latest season' in registration
-    assert 'first_name' in registration
-    assert 'last_name' in registration
+    assert "redirect('/register')" in registration
+    assert 'player-based join flow now lives on /register' in registration
 
 
 def test_games_page_has_upcoming_and_completed_sections():

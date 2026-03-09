@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminSupabaseClient } from '../../../lib/supabase/admin';
 import { createServerSupabaseClient } from '../../../lib/supabase/server';
 import { buildSlateValuations, getFantasyPlayerDetails } from '../../../lib/dfs/valuation';
+import { computeDfsFantasyPoints, DFS_CAPTAIN_MULTIPLIER, parseDfsPosition } from '../../../lib/dfs/scoring';
 
 const REQUIRED_SLOTS = ['CAPTAIN', 'SKATER_1', 'SKATER_2', 'SKATER_3', 'SKATER_4', 'GOALIE'];
 
@@ -27,12 +28,6 @@ async function getCurrentActor() {
   return { userId: user.id, role: profile?.role ?? 'FAN' };
 }
 
-function parsePosition(position: string | null | undefined) {
-  const p = (position ?? '').toLowerCase();
-  if (p.includes('goal')) return 'GOALIE';
-  return 'SKATER';
-}
-
 function validateSlots(slots: any[]) {
   const slotsSet = new Set(slots.map((s) => s.slot));
   for (const required of REQUIRED_SLOTS) {
@@ -48,25 +43,6 @@ async function getSlateLockAt(admin: any, slateId: string, fallbackLockAt?: stri
   if (!gameIds.length) return fallbackLockAt ?? null;
   const { data: games } = await admin.from('games').select('scheduled_at').in('id', gameIds).order('scheduled_at', { ascending: true }).limit(1);
   return games?.[0]?.scheduled_at ?? fallbackLockAt ?? null;
-}
-
-function computeWeekStartUTC(date = new Date()) {
-  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
-  const day = d.getUTCDay();
-  const diffToMonday = (day + 6) % 7;
-  d.setUTCDate(d.getUTCDate() - diffToMonday);
-  return d;
-}
-
-function toIsoDate(d: Date) {
-  return d.toISOString().slice(0, 10);
-}
-
-function getSkaterWeeklyBonus(realPoints: number) {
-  // Weekly aggregate bonus: +5 at >=5 points, and additional +5 at >=10 points.
-  if (realPoints >= 10) return 10;
-  if (realPoints >= 5) return 5;
-  return 0;
 }
 
 export async function GET(req: NextRequest) {
@@ -113,11 +89,35 @@ export async function GET(req: NextRequest) {
     ? await admin.from('contest_entries').select('id,contest_id,user_id,lineup_name,projected_points,actual_points,salary_used,created_at').eq('user_id', actor.userId).order('created_at', { ascending: false })
     : { data: [] as any[] };
 
+  const now = Date.now();
+  const orderedSlates = (slates.data ?? []).slice().sort((a: any, b: any) => new Date(a.lock_at ?? 0).getTime() - new Date(b.lock_at ?? 0).getTime());
+  const recommendedSlate = orderedSlates.find((s: any) => new Date(s.lock_at ?? 0).getTime() > now) ?? orderedSlates[0] ?? null;
+
+  const selectedSlateId = slateId || recommendedSlate?.id || null;
+  const slateGames = selectedSlateId
+    ? await admin
+      .from('slate_games')
+      .select('game_id,games!inner(id,scheduled_at,home_team,away_team,status,home_score,away_score)')
+      .eq('slate_id', selectedSlateId)
+    : { data: [] as any[] };
+  const slateGameRows = (slateGames.data ?? []).map((r: any) => r.games).filter(Boolean);
+  const slateGameTeamIds = Array.from(new Set(slateGameRows.flatMap((g: any) => [g.home_team, g.away_team]).filter(Boolean)));
+  const { data: slateGameTeams } = slateGameTeamIds.length
+    ? await admin.from('teams').select('id,name').in('id', slateGameTeamIds)
+    : { data: [] as any[] };
+  const gameTeamMap = new Map((slateGameTeams ?? []).map((t: any) => [t.id, t.name]));
+
   return NextResponse.json({
     actor,
     slates: slates.data ?? [],
     contests: contests.data ?? [],
     slatePlayers: merged,
+    slateGames: slateGameRows.map((g: any) => ({
+      ...g,
+      home_team_name: gameTeamMap.get(g.home_team) ?? g.home_team,
+      away_team_name: gameTeamMap.get(g.away_team) ?? g.away_team,
+    })),
+    recommendedSlateId: recommendedSlate?.id ?? null,
     myEntries: entriesQ.data ?? [],
   });
 }
@@ -155,55 +155,66 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, slate });
     }
 
-    if (action === 'auto_generate_weekly_default') {
+    if (action === 'auto_generate_default_next_slate_day' || action === 'auto_generate_weekly_default') {
       if (!isAdminRole(actor.role)) return NextResponse.json({ error: 'Admin only' }, { status: 403 });
 
-      const weekStart = computeWeekStartUTC(new Date());
-      weekStart.setUTCDate(weekStart.getUTCDate() + 7);
-      const weekEnd = new Date(weekStart);
-      weekEnd.setUTCDate(weekEnd.getUTCDate() + 7);
-      const weekLabel = toIsoDate(weekStart);
-
-      const { data: upcomingGames, error: gErr } = await admin
+      const nowIso = new Date().toISOString();
+      const { data: nextGame, error: nextGameErr } = await admin
         .from('games')
         .select('id,season_id,scheduled_at')
-        .gte('scheduled_at', weekStart.toISOString())
-        .lt('scheduled_at', weekEnd.toISOString())
-        .order('scheduled_at', { ascending: true });
-      if (gErr) throw gErr;
-      if (!upcomingGames?.length) return NextResponse.json({ error: 'No games found for upcoming week.' }, { status: 400 });
+        .gte('scheduled_at', nowIso)
+        .order('scheduled_at', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      if (nextGameErr) throw nextGameErr;
+      if (!nextGame) return NextResponse.json({ error: 'No upcoming games found.' }, { status: 400 });
 
-      const seasonId = upcomingGames[0].season_id;
-      const gameIds = upcomingGames.filter((g: any) => g.season_id === seasonId).map((g: any) => g.id);
-      const firstGameStart = upcomingGames.find((g: any) => g.season_id === seasonId)?.scheduled_at;
+      const gameDate = String(nextGame.scheduled_at).slice(0, 10);
+      const dayStartIso = `${gameDate}T00:00:00.000Z`;
+      const dayEnd = new Date(`${gameDate}T00:00:00.000Z`);
+      dayEnd.setUTCDate(dayEnd.getUTCDate() + 1);
+
+      const { data: dayGames, error: dayGamesErr } = await admin
+        .from('games')
+        .select('id,season_id,scheduled_at')
+        .gte('scheduled_at', dayStartIso)
+        .lt('scheduled_at', dayEnd.toISOString())
+        .eq('season_id', nextGame.season_id)
+        .order('scheduled_at', { ascending: true });
+      if (dayGamesErr) throw dayGamesErr;
+      if (!dayGames?.length) return NextResponse.json({ error: 'No games found for next slate day.' }, { status: 400 });
+
+      const firstGameStart = dayGames[0].scheduled_at;
+      const gameIds = dayGames.map((g: any) => g.id);
 
       const { data: existingSlate } = await admin
         .from('slates')
         .select('id')
-        .eq('season_id', seasonId)
-        .eq('week_start_date', weekLabel)
+        .eq('season_id', nextGame.season_id)
+        .eq('source_game_date', gameDate)
         .eq('is_default_weekly', true)
         .maybeSingle();
 
       if (existingSlate) {
-        return NextResponse.json({ ok: true, slateId: existingSlate.id, message: 'Default weekly slate already exists.' });
+        return NextResponse.json({ ok: true, slateId: existingSlate.id, message: 'Default slate for next game day already exists.' });
       }
 
       const { data: slate, error } = await admin.from('slates').insert({
-        season_id: seasonId,
-        name: `Default Weekly Slate (${weekLabel})`,
+        season_id: nextGame.season_id,
+        name: `Default Slate (${gameDate})`,
         lock_at: firstGameStart,
         status: 'published',
         created_by: actor.userId,
         is_default_weekly: true,
-        week_start_date: weekLabel,
+        week_start_date: gameDate,
+        source_game_date: gameDate,
       }).select('*').single();
       if (error) throw error;
 
       const { error: sgErr } = await admin.from('slate_games').insert(gameIds.map((game_id: string) => ({ slate_id: slate.id, game_id })));
       if (sgErr) throw sgErr;
 
-      const valuations = await buildSlateValuations({ slateId: slate.id, seasonId });
+      const valuations = await buildSlateValuations({ slateId: slate.id, seasonId: nextGame.season_id });
       if (valuations.length) {
         const { error: spErr } = await admin.from('slate_players').insert(valuations);
         if (spErr) throw spErr;
@@ -213,7 +224,7 @@ export async function POST(req: NextRequest) {
       if (!existingContest) {
         const { error: contestErr } = await admin.from('contests').insert({
           slate_id: slate.id,
-          name: `Weekly Main (${weekLabel})`,
+          name: `Main (${gameDate})`,
           entry_fee_cents: 1000,
           salary_cap: 50000,
           max_entries: 10,
@@ -226,8 +237,10 @@ export async function POST(req: NextRequest) {
         if (contestErr) throw contestErr;
       }
 
-      return NextResponse.json({ ok: true, slateId: slate.id, gameCount: gameIds.length });
+      return NextResponse.json({ ok: true, slateId: slate.id, gameCount: gameIds.length, slateDate: gameDate });
     }
+
+
 
     if (action === 'update_slate_status') {
       if (!isAdminRole(actor.role)) return NextResponse.json({ error: 'Admin only' }, { status: 403 });
@@ -291,20 +304,20 @@ export async function POST(req: NextRequest) {
       if ((slatePlayers ?? []).length !== playerIds.length) return NextResponse.json({ error: 'One or more players are not in this slate.' }, { status: 400 });
 
       const { data: playerRows } = await admin.from('players').select('id,position').in('id', playerIds);
-      const posById = new Map((playerRows ?? []).map((p: any) => [p.id, parsePosition(p.position)]));
+      const posById = new Map((playerRows ?? []).map((p: any) => [p.id, p.position]));
 
       const captain = slots.find((s: any) => s.slot === 'CAPTAIN');
       if (!captain) return NextResponse.json({ error: 'Captain slot is required.' }, { status: 400 });
-      if (posById.get(captain.player_id) === 'GOALIE') return NextResponse.json({ error: 'Captain must be a skater.' }, { status: 400 });
+      if (parseDfsPosition(posById.get(captain.player_id)) === 'GOALIE') return NextResponse.json({ error: 'Captain must be a skater.' }, { status: 400 });
 
       const goalie = slots.find((s: any) => s.slot === 'GOALIE');
       if (!goalie) return NextResponse.json({ error: 'Goalie slot is required.' }, { status: 400 });
-      if (posById.get(goalie.player_id) !== 'GOALIE') return NextResponse.json({ error: 'Goalie slot requires a goalie.' }, { status: 400 });
+      if (parseDfsPosition(posById.get(goalie.player_id)) !== 'GOALIE') return NextResponse.json({ error: 'Goalie slot requires a goalie.' }, { status: 400 });
 
       const skaterSlots = slots.filter((s: any) => s.slot.startsWith('SKATER_'));
       if (skaterSlots.length !== 4) return NextResponse.json({ error: 'Exactly four skater slots are required.' }, { status: 400 });
       for (const s of skaterSlots) {
-        if (posById.get(s.player_id) === 'GOALIE') return NextResponse.json({ error: `${s.slot} must be a skater.` }, { status: 400 });
+        if (parseDfsPosition(posById.get(s.player_id)) === 'GOALIE') return NextResponse.json({ error: `${s.slot} must be a skater.` }, { status: 400 });
       }
 
       let salaryUsed = 0;
@@ -312,7 +325,7 @@ export async function POST(req: NextRequest) {
       for (const s of slots) {
         const sp = (slatePlayers ?? []).find((p: any) => p.player_id === s.player_id);
         if (!sp) continue;
-        const mult = s.slot === 'CAPTAIN' ? 1.5 : 1;
+        const mult = s.slot === 'CAPTAIN' ? DFS_CAPTAIN_MULTIPLIER : 1;
         salaryUsed += Number(sp.salary || 0) * mult;
         projected += Number(sp.projection_points || 0) * mult;
       }
@@ -330,7 +343,7 @@ export async function POST(req: NextRequest) {
 
       const rows = slots.map((s: any) => {
         const sp = (slatePlayers ?? []).find((p: any) => p.player_id === s.player_id);
-        const mult = s.slot === 'CAPTAIN' ? 1.5 : 1;
+        const mult = s.slot === 'CAPTAIN' ? DFS_CAPTAIN_MULTIPLIER : 1;
         return {
           entry_id: entry.id,
           player_id: s.player_id,
@@ -369,7 +382,7 @@ export async function POST(req: NextRequest) {
         ? await admin.from('contest_entry_players').select('*').in('entry_id', entryIds)
         : { data: [] as any[] };
 
-      const playerPos = new Map((playerRows ?? []).map((p: any) => [p.id, parsePosition(p.position)]));
+      const playerPos = new Map((playerRows ?? []).map((p: any) => [p.id, p.position]));
       const gameById = new Map((gameRows ?? []).map((g: any) => [g.id, g]));
 
       const agg = new Map<string, { goals: number; assists: number; ga: number; wins: number }>();
@@ -390,20 +403,19 @@ export async function POST(req: NextRequest) {
 
       const playerFantasy = new Map<string, number>();
       for (const [playerId, a] of agg.entries()) {
-        const pos = playerPos.get(playerId) ?? 'SKATER';
-        if (pos === 'GOALIE') {
-          playerFantasy.set(playerId, a.wins * 8 - a.ga);
-        } else {
-          const realPoints = a.goals + a.assists;
-          const bonus = getSkaterWeeklyBonus(realPoints);
-          playerFantasy.set(playerId, a.goals * 3 + a.assists * 2 + bonus);
-        }
+        playerFantasy.set(playerId, computeDfsFantasyPoints({
+          position: playerPos.get(playerId),
+          goals: a.goals,
+          assists: a.assists,
+          wins: a.wins,
+          goalsAgainst: a.ga,
+        }));
       }
 
       const entryById = new Map((entryRows ?? []).map((e: any) => [e.id, 0]));
       for (const ep of entryPlayersRows ?? []) {
         const base = playerFantasy.get(ep.player_id) ?? 0;
-        const mult = ep.slot === 'CAPTAIN' ? 1.5 : 1;
+        const mult = ep.slot === 'CAPTAIN' ? DFS_CAPTAIN_MULTIPLIER : 1;
         entryById.set(ep.entry_id, Number((entryById.get(ep.entry_id)! + base * mult).toFixed(2)));
       }
 

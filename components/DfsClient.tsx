@@ -6,7 +6,7 @@ import FantasyPlayerModal from './FantasyPlayerModal';
 const SLOT_CONFIG = ['CAPTAIN', 'SKATER_1', 'SKATER_2', 'SKATER_3', 'SKATER_4', 'GOALIE'];
 
 export default function DfsClient() {
-  const [data, setData] = useState<any>({ slates: [], contests: [], slatePlayers: [], myEntries: [], actor: { role: 'FAN' } });
+  const [data, setData] = useState<any>({ slates: [], contests: [], slatePlayers: [], slateGames: [], recommendedSlateId: null, myEntries: [], actor: { role: 'FAN' } });
   const [selectedSlate, setSelectedSlate] = useState('');
   const [selectedContest, setSelectedContest] = useState('');
   const [lineupName, setLineupName] = useState('My Entry');
@@ -28,6 +28,17 @@ export default function DfsClient() {
     const res = await fetch(`/api/dfs${slateId ? `?slate_id=${slateId}` : ''}`);
     const json = await res.json();
     setData(json);
+
+    if (!selectedSlate && json?.recommendedSlateId) {
+      setSelectedSlate(json.recommendedSlateId);
+    }
+
+    if (!selectedContest && json?.contests?.length) {
+      const recommendedContest = json.contests.find((c: any) => c.slate_id === (slateId || json.recommendedSlateId) && ['open', 'live'].includes(String(c.status || '').toLowerCase()))
+        || json.contests.find((c: any) => c.slate_id === (slateId || json.recommendedSlateId))
+        || json.contests[0];
+      if (recommendedContest) setSelectedContest(recommendedContest.id);
+    }
   }
 
   useEffect(() => { load(); }, []);
@@ -112,9 +123,9 @@ export default function DfsClient() {
 
   async function generateWeeklyDefault() {
     try {
-      const json = await post('auto_generate_weekly_default', {});
+      const json = await post('auto_generate_default_next_slate_day', {});
       setSelectedSlate(json.slateId);
-      setMsg(`Default weekly slate ready (${json.gameCount ?? 0} games).`);
+      setMsg(`Default next slate day is ready (${json.gameCount ?? 0} games).`);
       await load(json.slateId);
     } catch (e: any) {
       setMsg(`Error: ${e.message}`);
@@ -198,6 +209,23 @@ export default function DfsClient() {
             </select>
           </div>
         </div>
+      </section>
+
+      <section className="card" style={{ marginBottom: 12 }}>
+        <h2 className="section-title">Current Slate Games</h2>
+        <table className="table">
+          <thead><tr><th>Time</th><th>Matchup</th><th>Status</th></tr></thead>
+          <tbody>
+            {(data.slateGames ?? []).map((g: any) => (
+              <tr key={g.id}>
+                <td>{new Date(g.scheduled_at).toLocaleString()}</td>
+                <td>{g.home_team_name} vs {g.away_team_name}</td>
+                <td>{g.status}</td>
+              </tr>
+            ))}
+            {!data.slateGames?.length && <tr><td colSpan={3} className="muted">No games attached to this slate yet.</td></tr>}
+          </tbody>
+        </table>
       </section>
 
       <div className="grid" style={{ gridTemplateColumns: 'minmax(320px, 1.1fr) minmax(340px, 0.9fr)' }}>

@@ -39,7 +39,7 @@ const TABS: { key: Tab; label: string }[] = [
   { key: 'seasons', label: 'Seasons' },
   { key: 'teams', label: 'Teams' },
   { key: 'players', label: 'Players' },
-  { key: 'registrations', label: 'Registrations' },
+  { key: 'registrations', label: 'Legacy Registrations' },
   { key: 'games', label: 'Games & Schedule' },
   { key: 'scores', label: 'Scores' },
   { key: 'trades', label: 'Trades' },
@@ -305,7 +305,8 @@ export default function AdminClient() {
 
       {activeTab === 'registrations' && (
         <section className="card">
-          <h2 className="section-title">Registrations</h2>
+          <h2 className="section-title">Legacy Registrations</h2>
+          <p className="muted">Season participation now lives in Players. Use this tab only for legacy records.</p>
           <table className="table"><thead><tr><th>User</th><th>Season</th><th>Preferred Positions</th><th>Experience</th><th>Status</th><th>Actions</th></tr></thead><tbody>{filteredRegistrations.map((r) => <tr key={r.id}><td>{profileNameById.get(r.user_id) ?? r.user_id}</td><td>{seasons.find((s) => s.id === r.season_id)?.name}</td><td>{(r.preferred_positions ?? []).join(', ')}</td><td>{r.experience ?? '-'}</td><td>{r.status}</td><td><button disabled={!canAdmin} onClick={() => saveAndReload('registrations_set_status', { id: r.id, status: 'approved' })}>Approve</button> <button disabled={!canAdmin} onClick={() => saveAndReload('registrations_set_status', { id: r.id, status: 'rejected' })}>Reject</button> <button disabled={!canAdmin} onClick={() => { setAssignRegId(r.id); setAssignForm({ team_id: '', name: profileNameById.get(r.user_id) ?? '', jersey: '', position: '' }); }}>Assign to Team</button></td></tr>)}</tbody></table>
         </section>
       )}

@@ -1,4 +1,5 @@
 import { createAdminSupabaseClient } from '../supabase/admin';
+import { computeDfsFantasyPoints } from './scoring';
 
 type ValuationRow = {
   slate_id: string;
@@ -24,7 +25,7 @@ function fallbackByPosition(position: string | null | undefined) {
 /**
  * Projection precedence:
  * 1) manual projection override
- * 2) current-season fantasy_points_avg when sample size is sufficient
+ * 2) current-season production (same DFS scoring model as contest scoring)
  * 3) historical season-summary totals (points/season mapped to a per-game projection baseline)
  * 4) positional fallback baseline
  */
@@ -33,15 +34,28 @@ export async function buildSlateValuations({
   seasonId,
 }: {
   slateId: string;
-  seasonId: string;
+  seasonId?: string;
 }): Promise<ValuationRow[]> {
   const admin = createAdminSupabaseClient();
 
+  const { data: slateGames, error: slateGameError } = await admin
+    .from('slate_games')
+    .select('game_id,games!inner(id,season_id,home_team,away_team)')
+    .eq('slate_id', slateId);
+  if (slateGameError) throw slateGameError;
+
+  const gameRows = (slateGames ?? []).map((r: any) => r.games).filter(Boolean);
+  if (!gameRows.length) return [];
+
+  const resolvedSeasonId = seasonId ?? gameRows[0].season_id;
+  const eligibleTeamIds = Array.from(new Set(gameRows.flatMap((g: any) => [g.home_team, g.away_team]).filter(Boolean)));
+  if (!eligibleTeamIds.length) return [];
+
   const [playersRes, seasonStatsRes, overridesRes, valuationInputsRes, historicalRes] = await Promise.all([
-    admin.from('players').select('id,name,team_id,position'),
-    admin.from('fantasy_points_v').select('*').eq('season_id', seasonId),
-    admin.from('player_projection_overrides').select('*').eq('season_id', seasonId),
-    admin.from('player_valuation_inputs').select('*').eq('season_id', seasonId),
+    admin.from('players').select('id,name,team_id,position').eq('season_id', resolvedSeasonId).in('team_id', eligibleTeamIds),
+    admin.from('fantasy_points_v').select('*').eq('season_id', resolvedSeasonId),
+    admin.from('player_projection_overrides').select('*').eq('season_id', resolvedSeasonId),
+    admin.from('player_valuation_inputs').select('*').eq('season_id', resolvedSeasonId),
     admin.from('player_historical_season_stats').select('*'),
   ]);
 
@@ -68,8 +82,16 @@ export async function buildSlateValuations({
     const valInput = valuationInputByPlayer.get(p.id);
 
     const minGames = Number(valInput?.min_sample_games ?? 2);
-    const currentProjection = seasonStat?.games_played >= minGames
-      ? Number(seasonStat.fantasy_points_avg ?? 0)
+    const seasonGames = Number(seasonStat?.games_played ?? 0);
+    const currentTotal = computeDfsFantasyPoints({
+      position: p.position,
+      goals: Number(seasonStat?.goals ?? 0),
+      assists: Number(seasonStat?.assists ?? 0),
+      wins: Number(seasonStat?.wins ?? 0),
+      goalsAgainst: Number(seasonStat?.goals_against ?? 0),
+    });
+    const currentProjection = seasonGames >= minGames && seasonGames > 0
+      ? Number((currentTotal / seasonGames).toFixed(2))
       : null;
 
     const historicalRows = [
@@ -89,12 +111,12 @@ export async function buildSlateValuations({
       override?.projection_points
       ?? currentProjection
       ?? historicalProjection
-      ?? fallback
+      ?? fallback,
     );
 
     const salary = Number(
       override?.salary_override
-      ?? Math.max(3200, Math.round(projection * 1150))
+      ?? Math.max(3200, Math.round(projection * 1150)),
     );
 
     return {
