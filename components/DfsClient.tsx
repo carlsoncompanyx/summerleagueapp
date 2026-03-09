@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import FantasyPlayerModal from './FantasyPlayerModal';
 
-const SLOT_CONFIG = ['G', 'F1', 'F2', 'D1', 'D2', 'FLEX', 'UTIL'];
+const SLOT_CONFIG = ['CAPTAIN', 'SKATER_1', 'SKATER_2', 'SKATER_3', 'SKATER_4', 'GOALIE'];
 
 export default function DfsClient() {
   const [data, setData] = useState<any>({ slates: [], contests: [], slatePlayers: [], myEntries: [], actor: { role: 'FAN' } });
@@ -36,11 +36,13 @@ export default function DfsClient() {
   const currentContest = data.contests.find((c: any) => c.id === selectedContest);
   const salaryUsed = useMemo(() => slots.reduce((sum, s) => {
     const sp = data.slatePlayers.find((p: any) => p.player_id === s.player_id);
-    return sum + (sp?.salary || 0);
+    const mult = s.slot === 'CAPTAIN' ? 1.5 : 1;
+    return sum + ((sp?.salary || 0) * mult);
   }, 0), [slots, data.slatePlayers]);
   const projectedTotal = useMemo(() => slots.reduce((sum, s) => {
     const sp = data.slatePlayers.find((p: any) => p.player_id === s.player_id);
-    return sum + Number(sp?.projection_points || 0);
+    const mult = s.slot === 'CAPTAIN' ? 1.5 : 1;
+    return sum + (Number(sp?.projection_points || 0) * mult);
   }, 0), [slots, data.slatePlayers]);
 
   const salaryRemaining = Number(currentContest?.salary_cap ?? 0) - salaryUsed;
@@ -108,6 +110,28 @@ export default function DfsClient() {
     }
   }
 
+  async function generateWeeklyDefault() {
+    try {
+      const json = await post('auto_generate_weekly_default', {});
+      setSelectedSlate(json.slateId);
+      setMsg(`Default weekly slate ready (${json.gameCount ?? 0} games).`);
+      await load(json.slateId);
+    } catch (e: any) {
+      setMsg(`Error: ${e.message}`);
+    }
+  }
+
+  async function scoreContest() {
+    if (!selectedContest) return;
+    try {
+      const json = await post('score_contest', { contest_id: selectedContest });
+      setMsg(`Contest scored. ${json.scoredEntries} entries updated.`);
+      await load(selectedSlate || undefined);
+    } catch (e: any) {
+      setMsg(`Error: ${e.message}`);
+    }
+  }
+
   async function openPlayerResearch(player: any) {
     try {
       setPlayerModalOpen(true);
@@ -126,25 +150,30 @@ export default function DfsClient() {
   return (
     <main>
       <h1>DFS</h1>
-      <p className="muted">Fantasy research and lineup workflow. Historical imports are used here for valuation fallback only.</p>
+      <p className="muted">Lineup format: 1 Captain, 4 Skaters, 1 Goalie. Captain uses 1.5x salary and 1.5x scoring.</p>
       {msg && <p>{msg}</p>}
 
       {isAdmin && (
         <section className="card" style={{ marginBottom: 12 }}>
           <h2 className="section-title">Admin DFS Controls</h2>
+          <div className="form-actions" style={{ marginTop: 0 }}>
+            <button onClick={generateWeeklyDefault}>Auto-Generate Upcoming Weekly Default Slate + Contest</button>
+            <button onClick={scoreContest} disabled={!selectedContest}>Score Selected Contest</button>
+          </div>
+
           <div className="form-grid">
             <div className="form-field col-4"><label>Season ID</label><input value={seasonIdForCreate} onChange={(e) => setSeasonIdForCreate(e.target.value)} placeholder="season uuid" /></div>
             <div className="form-field col-4"><label>Slate Name</label><input value={newSlateName} onChange={(e) => setNewSlateName(e.target.value)} /></div>
             <div className="form-field col-4"><label>Slate Lock</label><input type="datetime-local" value={newSlateLock} onChange={(e) => setNewSlateLock(e.target.value)} /></div>
-            <div className="form-actions"><button onClick={createSlate}>Create Slate + Snapshot Player Pool</button></div>
+            <div className="form-actions"><button onClick={createSlate}>Create Custom Slate</button></div>
           </div>
 
           <div className="form-grid" style={{ marginTop: 12 }}>
-            <div className="form-field col-3"><label>Contest Name</label><input value={newContestName} onChange={(e) => setNewContestName(e.target.value)} /></div>
-            <div className="form-field col-3"><label>Contest Lock</label><input type="datetime-local" value={newContestLock} onChange={(e) => setNewContestLock(e.target.value)} /></div>
-            <div className="form-field col-3"><label>Salary Cap</label><input value={newContestCap} onChange={(e) => setNewContestCap(e.target.value)} /></div>
-            <div className="form-field col-3"><label>Max Entries / User</label><input value={newContestMaxEntries} onChange={(e) => setNewContestMaxEntries(e.target.value)} /></div>
-            <div className="form-actions"><button onClick={createContest} disabled={!selectedSlate}>Create Contest</button></div>
+            <div className="form-field col-6"><label>Contest Name</label><input value={newContestName} onChange={(e) => setNewContestName(e.target.value)} /></div>
+            <div className="form-field col-6"><label>Contest Lock</label><input type="datetime-local" value={newContestLock} onChange={(e) => setNewContestLock(e.target.value)} /></div>
+            <div className="form-field col-6"><label>Salary Cap</label><input value={newContestCap} onChange={(e) => setNewContestCap(e.target.value)} /></div>
+            <div className="form-field col-6"><label>Max Entries / User</label><input value={newContestMaxEntries} onChange={(e) => setNewContestMaxEntries(e.target.value)} /></div>
+            <div className="form-actions"><button onClick={createContest} disabled={!selectedSlate}>Create Custom Contest</button></div>
           </div>
         </section>
       )}
@@ -156,7 +185,7 @@ export default function DfsClient() {
             <label>Active Slates</label>
             <select value={selectedSlate} onChange={(e) => setSelectedSlate(e.target.value)}>
               <option value="">Select slate...</option>
-              {data.slates.map((s: any) => <option key={s.id} value={s.id}>{s.name} · {s.status}</option>)}
+              {data.slates.map((s: any) => <option key={s.id} value={s.id}>{s.name} · {s.status}{s.is_default_weekly ? ' · default' : ''}</option>)}
             </select>
           </div>
           <div className="form-field col-6">
@@ -164,7 +193,7 @@ export default function DfsClient() {
             <select value={selectedContest} onChange={(e) => setSelectedContest(e.target.value)}>
               <option value="">Select contest...</option>
               {data.contests.filter((c: any) => !selectedSlate || c.slate_id === selectedSlate).map((c: any) => (
-                <option key={c.id} value={c.id}>{c.name} · {c.status} · Cap {c.salary_cap}</option>
+                <option key={c.id} value={c.id}>{c.name} · {c.status} · Cap {c.salary_cap}{c.is_default_weekly ? ' · default' : ''}</option>
               ))}
             </select>
           </div>
@@ -199,15 +228,22 @@ export default function DfsClient() {
             </div>
             {slots.map((s, idx) => (
               <div key={s.slot} className="form-field col-6">
-                <label>{s.slot}</label>
+                <label>{s.slot === 'CAPTAIN' ? 'Captain (1.5x)' : s.slot}</label>
                 <select value={s.player_id} onChange={(e) => setSlots((prev) => prev.map((row, i) => i === idx ? { ...row, player_id: e.target.value } : row))}>
                   <option value="">Select player...</option>
-                  {data.slatePlayers.map((p: any) => <option key={`${s.slot}-${p.player_id}`} value={p.player_id}>{p.player?.name || p.player_id.slice(0, 8)} · {p.player?.position || p.position} · ${p.salary}</option>)}
+                  {data.slatePlayers
+                    .filter((p: any) => {
+                      const pos = (p.player?.position || p.position || '').toLowerCase();
+                      const isGoalie = pos.includes('goal');
+                      if (s.slot === 'GOALIE') return isGoalie;
+                      return !isGoalie;
+                    })
+                    .map((p: any) => <option key={`${s.slot}-${p.player_id}`} value={p.player_id}>{p.player?.name || p.player_id.slice(0, 8)} · {p.player?.position || p.position} · ${p.salary}</option>)}
                 </select>
               </div>
             ))}
           </div>
-          <p className="muted">Salary used: {salaryUsed} / {currentContest?.salary_cap ?? '—'} · Remaining: {isNaN(salaryRemaining) ? '—' : salaryRemaining}</p>
+          <p className="muted">Salary used: {Math.round(salaryUsed)} / {currentContest?.salary_cap ?? '—'} · Remaining: {isNaN(salaryRemaining) ? '—' : Math.round(salaryRemaining)}</p>
           <p className="muted">Projected total: {projectedTotal.toFixed(2)}</p>
           <button type="button" onClick={submit} disabled={!selectedContest}>Submit Entry</button>
         </section>

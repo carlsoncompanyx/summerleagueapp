@@ -37,6 +37,14 @@ function toIso(value: string | null | undefined) {
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 
+
+async function validateTeamSeason(admin: any, season_id: string | null | undefined, team_id: string | null | undefined) {
+  if (!team_id) return;
+  const { data: team, error } = await admin.from('teams').select('season_id').eq('id', team_id).maybeSingle();
+  if (error) throw error;
+  if (!team) throw new Error('Selected team does not exist.');
+  if (season_id && team.season_id !== season_id) throw new Error('Selected team is not in selected season.');
+}
 export async function GET() {
   const admin = createAdminSupabaseClient();
   const me = await getCurrentRole();
@@ -127,11 +135,23 @@ export async function POST(req: NextRequest) {
       const { error } = await admin.from('teams').delete().eq('id', payload.id);
       if (error) throw error;
     } else if (action === 'player_create') {
-      const { error } = await admin.from('players').insert(payload);
+      const row = {
+        ...payload,
+        team_id: payload.team_id || null,
+        season_id: payload.season_id || null,
+      };
+      await validateTeamSeason(admin, row.season_id, row.team_id);
+      const { error } = await admin.from('players').insert(row);
       if (error) throw error;
     } else if (action === 'player_update') {
       const { id, ...rest } = payload;
-      const { error } = await admin.from('players').update(rest).eq('id', id);
+      const row = {
+        ...rest,
+        team_id: rest.team_id || null,
+        season_id: rest.season_id || null,
+      };
+      await validateTeamSeason(admin, row.season_id, row.team_id);
+      const { error } = await admin.from('players').update(row).eq('id', id);
       if (error) throw error;
     } else if (action === 'player_delete') {
       const { error } = await admin.from('players').delete().eq('id', payload.id);
@@ -274,7 +294,7 @@ export async function POST(req: NextRequest) {
           rowErrors.push(`Row ${i + 1}: season could not be resolved.`);
           return;
         }
-        if (!teamId) {
+        if ((row.team_name || row.team_id) && !teamId) {
           rowErrors.push(`Row ${i + 1}: team '${row.team_name || row.team_id || ''}' could not be resolved in selected season.`);
           return;
         }
@@ -285,7 +305,7 @@ export async function POST(req: NextRequest) {
 
         mapped.push({
           season_id: seasonId,
-          team_id: teamId,
+          team_id: teamId || null,
           user_id: row.user_id || null,
           name: row.name || row.display_name,
           jersey: row.jersey_number ? Number(row.jersey_number) : row.jersey ? Number(row.jersey) : null,

@@ -101,8 +101,17 @@ export default function AdminClient() {
     const base = seasonFilter === 'all'
       ? players
       : players.filter((p) => p.season_id === seasonFilter || (p.team_id ? teamIds.has(p.team_id) : false));
-    return teamFilter === 'all' ? base : base.filter((p) => p.team_id === teamFilter);
+
+    if (teamFilter === 'all') return base;
+    if (teamFilter === 'unassigned') return base.filter((p) => !p.team_id);
+    return base.filter((p) => p.team_id === teamFilter);
   }, [players, seasonTeams, seasonFilter, teamFilter]);
+
+  const unassignedSeasonPlayers = useMemo(
+    () => seasonPlayers.filter((p) => !p.team_id),
+    [seasonPlayers],
+  );
+
   const filteredRegistrations = useMemo(() => {
     const rows = seasonFilter === 'all' ? registrations : registrations.filter((r) => r.season_id === seasonFilter);
     return [...rows].sort((a, b) => (a.status === 'pending' ? -1 : 1) - (b.status === 'pending' ? -1 : 1));
@@ -274,6 +283,7 @@ export default function AdminClient() {
               <label>Team filter</label>
               <select value={teamFilter} onChange={(e) => setTeamFilter(e.target.value)}>
                 <option value="all">All Teams</option>
+                <option value="unassigned">Unassigned</option>
                 {seasonTeams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
               </select>
             </div>
@@ -289,6 +299,7 @@ export default function AdminClient() {
             <div className="form-actions"><button disabled={!canAdmin || busy} onClick={() => saveAndReload(playerForm.id ? 'player_update' : 'player_create', { ...playerForm, season_id: playerForm.season_id || null, team_id: playerForm.team_id || null, user_id: playerForm.user_id || null, jersey: playerForm.jersey ? Number(playerForm.jersey) : null, position: playerForm.position || null })}>{playerForm.id ? 'Update Player' : 'Create Player'}</button></div>
           </div>
           <table className="table"><thead><tr><th>Name</th><th>Team</th><th>Position</th><th>Jersey</th><th>Actions</th></tr></thead><tbody>{seasonPlayers.map((p) => <tr key={p.id}><td>{p.name}</td><td>{teamNameById.get(p.team_id ?? '') ?? '-'}</td><td>{p.position ?? '-'}</td><td>{p.jersey ?? '-'}</td><td><button onClick={() => setPlayerForm({ id: p.id, season_id: p.season_id ?? (seasonFilter === 'all' ? '' : seasonFilter), team_id: p.team_id ?? '', user_id: p.user_id ?? '', name: p.name, jersey: p.jersey?.toString() ?? '', position: p.position ?? '' })}>Edit</button> <button disabled={!canAdmin} onClick={() => confirm('Delete player?') && saveAndReload('player_delete', { id: p.id })}>Delete</button></td></tr>)}</tbody></table>
+          <p className="muted">Unassigned players in current filter: {unassignedSeasonPlayers.length}</p>
         </section>
       )}
 
