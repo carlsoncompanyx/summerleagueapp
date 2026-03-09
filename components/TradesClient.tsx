@@ -15,15 +15,62 @@ type Trade = {
 
 const STATUS_LABEL: Record<string, string> = {
   proposed: 'Proposed',
-  accepted_by_other: 'Accepted by other captain',
-  declined: 'Declined',
+  accepted_by_other: 'Accepted by receiving captain · Awaiting league review',
+  declined: 'Declined by receiving captain',
   admin_approved: 'Admin approved',
-  admin_declined: 'Admin rejected',
-  completed: 'Completed',
+  admin_declined: 'Rejected by league/admin',
+  completed: 'Executed',
 };
 
+function TradeCard({
+  trade,
+  teamsById,
+  onAccept,
+  onDecline,
+  onApprove,
+  onReject,
+  canRespond,
+  canReview,
+}: {
+  trade: Trade;
+  teamsById: Map<string, string>;
+  canRespond?: boolean;
+  canReview?: boolean;
+  onAccept?: () => void;
+  onDecline?: () => void;
+  onApprove?: () => void;
+  onReject?: () => void;
+}) {
+  return (
+    <div style={{ marginBottom: 10, borderBottom: '1px solid #333', paddingBottom: 10 }}>
+      <p><strong>{teamsById.get(trade.from_team_id)}</strong> ↔ <strong>{teamsById.get(trade.to_team_id)}</strong></p>
+      <p className="muted">Status: {STATUS_LABEL[trade.status] || trade.status}</p>
+      <p className="muted">Out: {trade.players_out.length} · In: {trade.players_in.length}</p>
+      <p className="muted">{trade.message || 'No note'}</p>
+      {canRespond && (
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button type="button" onClick={onAccept}>Accept</button>
+          <button type="button" onClick={onDecline}>Decline</button>
+        </div>
+      )}
+      {canReview && (
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button type="button" onClick={onApprove}>Approve + Execute</button>
+          <button type="button" onClick={onReject}>Reject</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function TradesClient() {
-  const [payload, setPayload] = useState<any>({ trades: [], teams: [], players: [], actor: { role: 'FAN' } });
+  const [payload, setPayload] = useState<any>({
+    trades: [],
+    teams: [],
+    players: [],
+    tradeBuckets: { incoming: [], outgoing: [], awaitingLeagueReview: [], finalized: [] },
+    actor: { role: 'FAN' },
+  });
   const [form, setForm] = useState<any>({ season_id: '', from_team_id: '', to_team_id: '', players_out: [], players_in: [], message: '' });
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -56,12 +103,10 @@ export default function TradesClient() {
     await load();
   }
 
-  const incoming = payload.trades.filter((t: Trade) => t.status === 'proposed');
-
   return (
     <main>
       <h1>Trades</h1>
-      <p className="muted">Captain workflow: proposal → other captain response → league review/admin execution.</p>
+      <p className="muted">League workflow: proposing captain → receiving captain response → league/admin execution review.</p>
       {error && <p style={{ color: '#ff6b6b' }}>{error}</p>}
       {success && <p style={{ color: '#76e8a1' }}>{success}</p>}
 
@@ -84,15 +129,15 @@ export default function TradesClient() {
               </select>
             </div>
             <div className="form-field col-6">
-              <label>Players Out (Team A)</label>
+              <label>Players Out (Source Team)</label>
               <select multiple value={form.players_out} onChange={(e) => setForm((f: any) => ({ ...f, players_out: Array.from(e.target.selectedOptions).map((o) => o.value) }))}>
-                {playersByTeam(form.from_team_id).map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                {playersByTeam(form.from_team_id).map((p: any) => <option key={p.id} value={p.id}>{p.name} · {p.position || '-'} · #{p.jersey || '-'}</option>)}
               </select>
             </div>
             <div className="form-field col-6">
-              <label>Players In (Team B)</label>
+              <label>Players In (Target Team)</label>
               <select multiple value={form.players_in} onChange={(e) => setForm((f: any) => ({ ...f, players_in: Array.from(e.target.selectedOptions).map((o) => o.value) }))}>
-                {playersByTeam(form.to_team_id).map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                {playersByTeam(form.to_team_id).map((p: any) => <option key={p.id} value={p.id}>{p.name} · {p.position || '-'} · #{p.jersey || '-'}</option>)}
               </select>
             </div>
             <div className="form-field col-12">
@@ -107,36 +152,49 @@ export default function TradesClient() {
       )}
 
       <section className="card" style={{ marginBottom: 12 }}>
-        <h2 className="section-title">Pending Captain Responses</h2>
-        {incoming.map((t: Trade) => (
-          <div key={t.id} style={{ marginBottom: 10, borderBottom: '1px solid #333', paddingBottom: 10 }}>
-            <p><strong>{teamsById.get(t.from_team_id)}</strong> ↔ <strong>{teamsById.get(t.to_team_id)}</strong> · {STATUS_LABEL[t.status] || t.status}</p>
-            <p className="muted">{t.message || 'No note'}</p>
-            {payload.actor.role !== 'FAN' && (
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button type="button" onClick={() => doAction('captain_response', { trade_id: t.id, accept: true })}>Accept</button>
-                <button type="button" onClick={() => doAction('captain_response', { trade_id: t.id, accept: false })}>Decline</button>
-              </div>
-            )}
-          </div>
+        <h2 className="section-title">Incoming Trade Requests</h2>
+        {(payload.tradeBuckets?.incoming ?? []).map((t: Trade) => (
+          <TradeCard
+            key={t.id}
+            trade={t}
+            teamsById={teamsById}
+            canRespond={['CAPTAIN', 'ADMIN'].includes(payload.actor.role)}
+            onAccept={() => doAction('captain_response', { trade_id: t.id, accept: true })}
+            onDecline={() => doAction('captain_response', { trade_id: t.id, accept: false })}
+          />
         ))}
-        {incoming.length === 0 && <p className="muted">No pending proposals.</p>}
+        {(payload.tradeBuckets?.incoming ?? []).length === 0 && <p className="muted">No incoming proposals.</p>}
       </section>
 
       <section className="card" style={{ marginBottom: 12 }}>
-        <h2 className="section-title">Trade Queue</h2>
-        {payload.trades.map((t: Trade) => (
-          <div key={t.id} style={{ marginBottom: 10, borderBottom: '1px solid #333', paddingBottom: 10 }}>
-            <p><strong>{teamsById.get(t.from_team_id)}</strong> ↔ <strong>{teamsById.get(t.to_team_id)}</strong> · {STATUS_LABEL[t.status] || t.status}</p>
-            <p className="muted">Out: {t.players_out.length} · In: {t.players_in.length}</p>
-            {payload.actor.role === 'ADMIN' && t.status === 'accepted_by_other' && (
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button type="button" onClick={() => doAction('admin_review', { trade_id: t.id, approve: true })}>Approve + Execute</button>
-                <button type="button" onClick={() => doAction('admin_review', { trade_id: t.id, approve: false })}>Reject</button>
-              </div>
-            )}
-          </div>
+        <h2 className="section-title">Outgoing Trade Requests</h2>
+        {(payload.tradeBuckets?.outgoing ?? []).map((t: Trade) => (
+          <TradeCard key={t.id} trade={t} teamsById={teamsById} />
         ))}
+        {(payload.tradeBuckets?.outgoing ?? []).length === 0 && <p className="muted">No outgoing proposals.</p>}
+      </section>
+
+      <section className="card" style={{ marginBottom: 12 }}>
+        <h2 className="section-title">Awaiting League Review</h2>
+        {(payload.tradeBuckets?.awaitingLeagueReview ?? []).map((t: Trade) => (
+          <TradeCard
+            key={t.id}
+            trade={t}
+            teamsById={teamsById}
+            canReview={payload.actor.role === 'ADMIN'}
+            onApprove={() => doAction('admin_review', { trade_id: t.id, approve: true })}
+            onReject={() => doAction('admin_review', { trade_id: t.id, approve: false })}
+          />
+        ))}
+        {(payload.tradeBuckets?.awaitingLeagueReview ?? []).length === 0 && <p className="muted">No trades awaiting league review.</p>}
+      </section>
+
+      <section className="card" style={{ marginBottom: 12 }}>
+        <h2 className="section-title">Finalized / Closed Trades</h2>
+        {(payload.tradeBuckets?.finalized ?? []).map((t: Trade) => (
+          <TradeCard key={t.id} trade={t} teamsById={teamsById} />
+        ))}
+        {(payload.tradeBuckets?.finalized ?? []).length === 0 && <p className="muted">No finalized trades yet.</p>}
       </section>
 
       <section className="card">

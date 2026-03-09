@@ -282,6 +282,156 @@ begin
 end;
 $$;
 
+
+
+-- Canonical model updates from later migrations:
+-- Active participation model: players (season_id + user_id) is source-of-truth.
+alter table public.profiles
+  add column if not exists first_name text,
+  add column if not exists last_name text;
+alter table public.profiles
+  alter column display_name drop not null;
+
+alter table public.players
+  add column if not exists season_id uuid references public.seasons(id) on delete cascade;
+
+create index if not exists idx_players_season_id on public.players(season_id);
+create unique index if not exists uniq_players_user_season_nonnull
+  on public.players(user_id, season_id)
+  where user_id is not null and season_id is not null;
+
+-- Legacy/de-emphasized tables kept for compatibility:
+-- registrations, team_members, and profiles.team_id are no longer authoritative roster truth.
+
+create table if not exists public.trade_status_history (
+  id uuid primary key default gen_random_uuid(),
+  trade_id uuid not null references public.trades(id) on delete cascade,
+  from_status public.trade_status,
+  to_status public.trade_status not null,
+  changed_by uuid references auth.users(id),
+  changed_at timestamptz not null default now()
+);
+
+create table if not exists public.player_projection_overrides (
+  id uuid primary key default gen_random_uuid(),
+  season_id uuid not null references public.seasons(id) on delete cascade,
+  player_id uuid not null references public.players(id) on delete cascade,
+  projection_points numeric(8,2) not null,
+  salary_override int,
+  notes text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (season_id, player_id)
+);
+
+create table if not exists public.slates (
+  id uuid primary key default gen_random_uuid(),
+  season_id uuid not null references public.seasons(id) on delete cascade,
+  name text not null,
+  lock_at timestamptz not null,
+  status text not null default 'draft' check (status in ('draft','published','locked','complete')),
+  created_by uuid references auth.users(id),
+  week_start_date date,
+  source_game_date date,
+  is_default_weekly boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.slate_games (
+  id uuid primary key default gen_random_uuid(),
+  slate_id uuid not null references public.slates(id) on delete cascade,
+  game_id uuid not null references public.games(id) on delete cascade,
+  unique(slate_id, game_id)
+);
+
+create table if not exists public.slate_players (
+  id uuid primary key default gen_random_uuid(),
+  slate_id uuid not null references public.slates(id) on delete cascade,
+  player_id uuid not null references public.players(id) on delete cascade,
+  team_id uuid references public.teams(id) on delete set null,
+  position text,
+  salary int not null,
+  projection_points numeric(8,2) not null,
+  baseline_points numeric(8,2) not null default 0,
+  created_at timestamptz not null default now(),
+  unique(slate_id, player_id)
+);
+
+create table if not exists public.contests (
+  id uuid primary key default gen_random_uuid(),
+  slate_id uuid not null references public.slates(id) on delete cascade,
+  name text not null,
+  entry_fee_cents int not null default 1000,
+  salary_cap int not null default 50000,
+  max_entries int not null default 5,
+  lock_at timestamptz,
+  roster_config jsonb not null default '{"CAPTAIN":1,"SKATER":4,"GOALIE":1}'::jsonb,
+  status text not null default 'open',
+  created_by uuid references auth.users(id),
+  is_default_weekly boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.contest_entries (
+  id uuid primary key default gen_random_uuid(),
+  contest_id uuid not null references public.contests(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  lineup_name text,
+  salary_used int not null default 0,
+  projected_points numeric(8,2) not null default 0,
+  actual_points numeric(8,2),
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.contest_entry_players (
+  id uuid primary key default gen_random_uuid(),
+  entry_id uuid not null references public.contest_entries(id) on delete cascade,
+  player_id uuid not null references public.players(id) on delete cascade,
+  slate_player_id uuid references public.slate_players(id) on delete set null,
+  slot text not null,
+  salary_snapshot int not null,
+  projection_snapshot numeric(8,2) not null,
+  created_at timestamptz not null default now(),
+  unique(entry_id, slot)
+);
+
+create table if not exists public.contest_leaderboard_snapshots (
+  id uuid primary key default gen_random_uuid(),
+  contest_id uuid not null references public.contests(id) on delete cascade,
+  entry_id uuid not null references public.contest_entries(id) on delete cascade,
+  rank int not null,
+  projected_points numeric(8,2) not null default 0,
+  actual_points numeric(8,2) not null default 0,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.player_historical_season_stats (
+  id uuid primary key default gen_random_uuid(),
+  player_id uuid references public.players(id) on delete set null,
+  player_name_raw text not null,
+  normalized_player_name text not null,
+  season_label text not null,
+  goals int not null default 0,
+  assists int not null default 0,
+  points int generated always as (goals + assists) stored,
+  source text not null default 'csv_import',
+  imported_at timestamptz not null default now(),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique(normalized_player_name, season_label, source)
+);
+
+create table if not exists public.player_valuation_inputs (
+  id uuid primary key default gen_random_uuid(),
+  season_id uuid not null references public.seasons(id) on delete cascade,
+  player_id uuid not null references public.players(id) on delete cascade,
+  min_sample_games int not null default 2,
+  fallback_position_baseline numeric(8,2),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique(season_id, player_id)
+);
+
 alter table public.profiles enable row level security;
 alter table public.seasons enable row level security;
 alter table public.teams enable row level security;

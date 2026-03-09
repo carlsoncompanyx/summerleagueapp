@@ -193,16 +193,14 @@ def test_statistics_page_has_leaderboard_and_team_filter():
     stats_page = Path('app/statistics/page.tsx').read_text()
     stats_client = Path('components/StatisticsClient.tsx').read_text()
     assert 'StatisticsClient' in stats_page
-    assert 'Leaderboard' in stats_client
-    assert 'All Stats' in stats_client
+    assert 'League Leaders' in stats_client
+    assert 'All League Stats' in stats_client
     assert 'team-filter' in stats_client
     assert 'Skaters' in stats_client
     assert 'Goalies' in stats_client
     assert '<th>G</th>' in stats_client
     assert '<th>A</th>' in stats_client
     assert '<th>P</th>' in stats_client
-    assert '<th>FP</th>' in stats_client
-    assert '<th>FP/GP</th>' in stats_client
     assert '<th>Wins</th>' in stats_client
     assert '<th>GAA</th>' in stats_client
 
@@ -221,12 +219,13 @@ def test_trades_and_admin_have_requested_management_sections():
     admin = Path('components/AdminClient.tsx').read_text()
     assert 'TradesClient' in trades
     assert 'Propose Trade' in trade_client
-    assert 'Pending Captain Responses' in trade_client
+    assert 'Incoming Trade Requests' in trade_client
     assert 'Approve + Execute' in trade_client
     assert 'League Operations Dashboard' in admin
     assert 'Games & Schedule' in admin
     assert 'Scores' in admin
     assert 'Trades' in admin
+    assert 'Legacy Registrations' in admin
     assert 'Save Score + Stats' in admin
 
 

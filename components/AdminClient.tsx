@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { parseCsv } from '../lib/csv/parse';
 
 type Role = 'FAN' | 'PLAYER' | 'CAPTAIN' | 'ADMIN';
 type Tab = 'dashboard' | 'seasons' | 'teams' | 'players' | 'registrations' | 'games' | 'scores' | 'trades';
@@ -39,19 +40,10 @@ const TABS: { key: Tab; label: string }[] = [
   { key: 'seasons', label: 'Seasons' },
   { key: 'teams', label: 'Teams' },
   { key: 'players', label: 'Players' },
-  { key: 'registrations', label: 'Legacy Registrations' },
   { key: 'games', label: 'Games & Schedule' },
   { key: 'scores', label: 'Scores' },
   { key: 'trades', label: 'Trades' },
 ];
-
-function parseCsv(text: string) {
-  const lines = text.split(/\r?\n/).filter(Boolean);
-  if (!lines.length) return { headers: [] as string[], rows: [] as string[][] };
-  const headers = lines[0].split(',').map((x) => x.trim());
-  const rows = lines.slice(1).map((line) => line.split(',').map((x) => x.trim()));
-  return { headers, rows };
-}
 
 export default function AdminClient() {
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');

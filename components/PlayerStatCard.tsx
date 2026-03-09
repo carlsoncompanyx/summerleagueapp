@@ -7,8 +7,9 @@ type PlayerCardProps = {
   gp?: number;
   goals?: number;
   assists?: number;
-  fantasyPoints?: number;
-  fantasyAvg?: number;
+  points?: number;
+  wins?: number;
+  goalsAgainst?: number;
   recentForm?: string;
   compact?: boolean;
 };
@@ -20,11 +21,15 @@ export default function PlayerStatCard({
   gp = 0,
   goals = 0,
   assists = 0,
-  fantasyPoints = 0,
-  fantasyAvg = 0,
+  points = goals + assists,
+  wins = 0,
+  goalsAgainst = 0,
   recentForm,
   compact = false,
 }: PlayerCardProps) {
+  const isGoalie = (position || '').toLowerCase().includes('goal');
+  const gaa = gp > 0 ? (goalsAgainst / gp).toFixed(2) : '0.00';
+
   return (
     <article className="card" style={{ padding: compact ? 10 : 14 }}>
       <h3 className="card-title" style={{ marginBottom: 6 }}>{name}</h3>
@@ -33,10 +38,11 @@ export default function PlayerStatCard({
         <div><strong>GP</strong><br />{gp}</div>
         <div><strong>G</strong><br />{goals}</div>
         <div><strong>A</strong><br />{assists}</div>
-        <div><strong>FP</strong><br />{fantasyPoints.toFixed(1)}</div>
+        <div><strong>P</strong><br />{points}</div>
       </div>
       <p className="muted" style={{ marginBottom: 0, marginTop: 8 }}>
-        Avg: {fantasyAvg.toFixed(2)} FP/GP{recentForm ? ` · Form: ${recentForm}` : ''}
+        {isGoalie ? `Wins: ${wins} · GAA: ${gaa}` : `Points: ${points}`}
+        {recentForm ? ` · Form: ${recentForm}` : ''}
       </p>
     </article>
   );
