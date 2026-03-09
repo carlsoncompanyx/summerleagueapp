@@ -16,8 +16,8 @@ type Season = {
   rules: string | null;
 };
 type Team = { id: string; season_id: string; name: string; captain_user_id: string | null; logo_url?: string | null };
-type Player = { id: string; team_id: string | null; user_id: string | null; name: string; jersey: number | null; position: string | null; nickname: string | null };
-type Profile = { user_id: string; display_name: string; role: Role; team_id: string | null };
+type Player = { id: string; season_id: string | null; team_id: string | null; user_id: string | null; name: string; jersey: number | null; position: string | null; nickname: string | null };
+type Profile = { user_id: string; first_name?: string | null; last_name?: string | null; display_name: string | null; role: Role; team_id: string | null };
 type Registration = { id: string; season_id: string; user_id: string; status: string; preferred_positions: string[] | null; experience: string | null };
 type Trade = { id: string; season_id: string; from_team_id: string; to_team_id: string; players_out: string[]; players_in: string[]; proposed_by: string; message: string | null; status: string };
 type Game = { id: string; season_id: string; home_team: string; away_team: string; scheduled_at: string; location: string | null; status: string; home_score: number; away_score: number };
@@ -75,11 +75,11 @@ export default function AdminClient() {
 
   const [seasonForm, setSeasonForm] = useState({ id: '', name: '', start_date: '', end_date: '', registration_open_at: '', registration_close_at: '', waiver_text: '', rules: '' });
   const [teamForm, setTeamForm] = useState({ id: '', season_id: '', name: '', captain_user_id: '', logo_url: '' });
-  const [playerForm, setPlayerForm] = useState({ id: '', team_id: '', user_id: '', name: '', jersey: '', position: '', nickname: '' });
+  const [playerForm, setPlayerForm] = useState({ id: '', season_id: '', team_id: '', user_id: '', name: '', jersey: '', position: '' });
   const [gameForm, setGameForm] = useState({ id: '', season_id: '', home_team: '', away_team: '', scheduled_at: '', location: '', status: 'SCHEDULED' });
 
   const [assignRegId, setAssignRegId] = useState<string | null>(null);
-  const [assignForm, setAssignForm] = useState({ team_id: '', name: '', jersey: '', position: '', nickname: '' });
+  const [assignForm, setAssignForm] = useState({ team_id: '', name: '', jersey: '', position: '' });
 
   const [scoreGameId, setScoreGameId] = useState<string | null>(null);
   const [homeScore, setHomeScore] = useState('0');
@@ -93,14 +93,16 @@ export default function AdminClient() {
   const [csvRowErrors, setCsvRowErrors] = useState<string[]>([]);
 
   const teamNameById = useMemo(() => new Map(teams.map((t) => [t.id, t.name])), [teams]);
-  const profileNameById = useMemo(() => new Map(profiles.map((p) => [p.user_id, p.display_name])), [profiles]);
+  const profileNameById = useMemo(() => new Map(profiles.map((p) => { const full = `${p.first_name ?? ''} ${p.last_name ?? ''}`.trim(); return [p.user_id, (p.display_name && p.display_name.trim()) || full || 'Unknown']; })), [profiles]);
 
   const seasonTeams = useMemo(() => seasonFilter === 'all' ? teams : teams.filter((t) => t.season_id === seasonFilter), [teams, seasonFilter]);
   const seasonPlayers = useMemo(() => {
-    const ids = new Set(seasonTeams.map((t) => t.id));
-    const base = players.filter((p) => (p.team_id ? ids.has(p.team_id) : false));
+    const teamIds = new Set(seasonTeams.map((t) => t.id));
+    const base = seasonFilter === 'all'
+      ? players
+      : players.filter((p) => p.season_id === seasonFilter || (p.team_id ? teamIds.has(p.team_id) : false));
     return teamFilter === 'all' ? base : base.filter((p) => p.team_id === teamFilter);
-  }, [players, seasonTeams, teamFilter]);
+  }, [players, seasonTeams, seasonFilter, teamFilter]);
   const filteredRegistrations = useMemo(() => {
     const rows = seasonFilter === 'all' ? registrations : registrations.filter((r) => r.season_id === seasonFilter);
     return [...rows].sort((a, b) => (a.status === 'pending' ? -1 : 1) - (b.status === 'pending' ? -1 : 1));
@@ -190,7 +192,7 @@ export default function AdminClient() {
     setCsvRowErrors([]);
 
     if (csvModal === 'players') {
-      setCsvMapping({ season_name: '', team_name: '', name: '', jersey_number: '', position: '', nickname: '', user_id: '' });
+      setCsvMapping({ season_name: '', team_name: '', name: '', jersey_number: '', position: '', user_id: '' });
     } else {
       setCsvMapping({ season_name: '', home_team_name: '', away_team_name: '', scheduled_at: '', location: '', status: '' });
     }
@@ -278,22 +280,22 @@ export default function AdminClient() {
             <div className="form-actions"><button onClick={() => setCsvModal('players')}>Import Players CSV</button></div>
           </div>
           <div className="form-grid">
-            <div className="form-field col-6"><label>Team</label><select value={playerForm.team_id} onChange={(e) => setPlayerForm((p) => ({ ...p, team_id: e.target.value }))}><option value="">Select team</option>{seasonTeams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></div>
-            <div className="form-field col-6"><label>Display Name</label><input value={playerForm.name} onChange={(e) => setPlayerForm((p) => ({ ...p, name: e.target.value }))} /></div>
+            <div className="form-field col-6"><label>Season</label><select value={playerForm.season_id} onChange={(e) => setPlayerForm((p) => ({ ...p, season_id: e.target.value }))}><option value="">Select season</option>{seasons.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
+            <div className="form-field col-6"><label>Team</label><select value={playerForm.team_id} onChange={(e) => setPlayerForm((p) => ({ ...p, team_id: e.target.value }))}><option value="">Unassigned / Free Agent</option>{teams.filter((t) => !playerForm.season_id || t.season_id === playerForm.season_id).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></div>
+            <div className="form-field col-6"><label>Official Name</label><input value={playerForm.name} onChange={(e) => setPlayerForm((p) => ({ ...p, name: e.target.value }))} /></div>
             <div className="form-field col-4"><label>Jersey Number</label><input value={playerForm.jersey} onChange={(e) => setPlayerForm((p) => ({ ...p, jersey: e.target.value }))} /></div>
             <div className="form-field col-4"><label>Position</label><input value={playerForm.position} onChange={(e) => setPlayerForm((p) => ({ ...p, position: e.target.value }))} /></div>
-            <div className="form-field col-4"><label>Nickname</label><input value={playerForm.nickname} onChange={(e) => setPlayerForm((p) => ({ ...p, nickname: e.target.value }))} /></div>
-            <div className="form-field col-6"><label>Linked User (optional)</label><select value={playerForm.user_id} onChange={(e) => setPlayerForm((p) => ({ ...p, user_id: e.target.value }))}><option value="">Select user</option>{profiles.map((pr) => <option key={pr.user_id} value={pr.user_id}>{pr.display_name}</option>)}</select></div>
-            <div className="form-actions"><button disabled={!canAdmin || busy} onClick={() => saveAndReload(playerForm.id ? 'player_update' : 'player_create', { ...playerForm, team_id: playerForm.team_id || null, user_id: playerForm.user_id || null, jersey: playerForm.jersey ? Number(playerForm.jersey) : null, position: playerForm.position || null, nickname: playerForm.nickname || null })}>{playerForm.id ? 'Update Player' : 'Create Player'}</button></div>
+            <div className="form-field col-6"><label>Linked User (optional)</label><select value={playerForm.user_id} onChange={(e) => setPlayerForm((p) => ({ ...p, user_id: e.target.value }))}><option value="">Select user</option>{profiles.map((pr) => <option key={pr.user_id} value={pr.user_id}>{profileNameById.get(pr.user_id)}</option>)}</select></div>
+            <div className="form-actions"><button disabled={!canAdmin || busy} onClick={() => saveAndReload(playerForm.id ? 'player_update' : 'player_create', { ...playerForm, season_id: playerForm.season_id || null, team_id: playerForm.team_id || null, user_id: playerForm.user_id || null, jersey: playerForm.jersey ? Number(playerForm.jersey) : null, position: playerForm.position || null })}>{playerForm.id ? 'Update Player' : 'Create Player'}</button></div>
           </div>
-          <table className="table"><thead><tr><th>Name</th><th>Team</th><th>Position</th><th>Jersey</th><th>Actions</th></tr></thead><tbody>{seasonPlayers.map((p) => <tr key={p.id}><td>{p.name}</td><td>{teamNameById.get(p.team_id ?? '') ?? '-'}</td><td>{p.position ?? '-'}</td><td>{p.jersey ?? '-'}</td><td><button onClick={() => setPlayerForm({ id: p.id, team_id: p.team_id ?? '', user_id: p.user_id ?? '', name: p.name, jersey: p.jersey?.toString() ?? '', position: p.position ?? '', nickname: p.nickname ?? '' })}>Edit</button> <button disabled={!canAdmin} onClick={() => confirm('Delete player?') && saveAndReload('player_delete', { id: p.id })}>Delete</button></td></tr>)}</tbody></table>
+          <table className="table"><thead><tr><th>Name</th><th>Team</th><th>Position</th><th>Jersey</th><th>Actions</th></tr></thead><tbody>{seasonPlayers.map((p) => <tr key={p.id}><td>{p.name}</td><td>{teamNameById.get(p.team_id ?? '') ?? '-'}</td><td>{p.position ?? '-'}</td><td>{p.jersey ?? '-'}</td><td><button onClick={() => setPlayerForm({ id: p.id, season_id: p.season_id ?? (seasonFilter === 'all' ? '' : seasonFilter), team_id: p.team_id ?? '', user_id: p.user_id ?? '', name: p.name, jersey: p.jersey?.toString() ?? '', position: p.position ?? '' })}>Edit</button> <button disabled={!canAdmin} onClick={() => confirm('Delete player?') && saveAndReload('player_delete', { id: p.id })}>Delete</button></td></tr>)}</tbody></table>
         </section>
       )}
 
       {activeTab === 'registrations' && (
         <section className="card">
           <h2 className="section-title">Registrations</h2>
-          <table className="table"><thead><tr><th>User</th><th>Season</th><th>Preferred Positions</th><th>Experience</th><th>Status</th><th>Actions</th></tr></thead><tbody>{filteredRegistrations.map((r) => <tr key={r.id}><td>{profileNameById.get(r.user_id) ?? r.user_id}</td><td>{seasons.find((s) => s.id === r.season_id)?.name}</td><td>{(r.preferred_positions ?? []).join(', ')}</td><td>{r.experience ?? '-'}</td><td>{r.status}</td><td><button disabled={!canAdmin} onClick={() => saveAndReload('registrations_set_status', { id: r.id, status: 'approved' })}>Approve</button> <button disabled={!canAdmin} onClick={() => saveAndReload('registrations_set_status', { id: r.id, status: 'rejected' })}>Reject</button> <button disabled={!canAdmin} onClick={() => { setAssignRegId(r.id); setAssignForm({ team_id: '', name: profileNameById.get(r.user_id) ?? '', jersey: '', position: '', nickname: '' }); }}>Assign to Team</button></td></tr>)}</tbody></table>
+          <table className="table"><thead><tr><th>User</th><th>Season</th><th>Preferred Positions</th><th>Experience</th><th>Status</th><th>Actions</th></tr></thead><tbody>{filteredRegistrations.map((r) => <tr key={r.id}><td>{profileNameById.get(r.user_id) ?? r.user_id}</td><td>{seasons.find((s) => s.id === r.season_id)?.name}</td><td>{(r.preferred_positions ?? []).join(', ')}</td><td>{r.experience ?? '-'}</td><td>{r.status}</td><td><button disabled={!canAdmin} onClick={() => saveAndReload('registrations_set_status', { id: r.id, status: 'approved' })}>Approve</button> <button disabled={!canAdmin} onClick={() => saveAndReload('registrations_set_status', { id: r.id, status: 'rejected' })}>Reject</button> <button disabled={!canAdmin} onClick={() => { setAssignRegId(r.id); setAssignForm({ team_id: '', name: profileNameById.get(r.user_id) ?? '', jersey: '', position: '' }); }}>Assign to Team</button></td></tr>)}</tbody></table>
         </section>
       )}
 
@@ -339,8 +341,7 @@ export default function AdminClient() {
               <div className="form-field col-6"><label>Player Name</label><input value={assignForm.name} onChange={(e) => setAssignForm((a) => ({ ...a, name: e.target.value }))} /></div>
               <div className="form-field col-4"><label>Jersey</label><input value={assignForm.jersey} onChange={(e) => setAssignForm((a) => ({ ...a, jersey: e.target.value }))} /></div>
               <div className="form-field col-4"><label>Position</label><input value={assignForm.position} onChange={(e) => setAssignForm((a) => ({ ...a, position: e.target.value }))} /></div>
-              <div className="form-field col-4"><label>Nickname</label><input value={assignForm.nickname} onChange={(e) => setAssignForm((a) => ({ ...a, nickname: e.target.value }))} /></div>
-            </div>
+                          </div>
             <div className="form-actions" style={{ marginTop: 10 }}>
               <button onClick={() => saveAndReload('registration_assign_player', { registrationId: assignRegId, ...assignForm }, () => setAssignRegId(null))}>Assign</button>
               <button onClick={() => setAssignRegId(null)}>Cancel</button>

@@ -50,7 +50,7 @@ export async function GET() {
       admin.from('games').select('*').order('scheduled_at', { ascending: true }),
       admin.from('trades').select('*').order('created_at', { ascending: false }),
       admin.from('game_stats').select('*').order('created_at', { ascending: false }),
-      admin.from('profiles').select('user_id, display_name, role, team_id').order('display_name'),
+      admin.from('profiles').select('user_id, first_name, last_name, display_name, role, team_id').order('created_at'),
     ]);
 
   return NextResponse.json({
@@ -141,7 +141,7 @@ export async function POST(req: NextRequest) {
       const { error } = await admin.from('registrations').update({ status }).eq('id', id);
       if (error) throw error;
     } else if (action === 'registration_assign_player') {
-      const { registrationId, team_id, name, jersey, position, nickname, user_id } = payload;
+      const { registrationId, team_id, name, jersey, position, user_id } = payload;
       const { data: reg, error: regError } = await admin
         .from('registrations')
         .select('*')
@@ -158,12 +158,12 @@ export async function POST(req: NextRequest) {
       if (teamErr || !team) throw new Error('Assigned team must belong to same season.');
 
       const { error: playerErr } = await admin.from('players').insert({
+        season_id: reg.season_id,
         team_id,
         user_id: user_id || reg.user_id,
         name,
         jersey: jersey ? Number(jersey) : null,
         position: position || null,
-        nickname: nickname || null,
       });
       if (playerErr) throw playerErr;
 
@@ -284,12 +284,12 @@ export async function POST(req: NextRequest) {
         }
 
         mapped.push({
+          season_id: seasonId,
           team_id: teamId,
           user_id: row.user_id || null,
           name: row.name || row.display_name,
           jersey: row.jersey_number ? Number(row.jersey_number) : row.jersey ? Number(row.jersey) : null,
           position: row.position || null,
-          nickname: row.nickname || null,
         });
       });
 

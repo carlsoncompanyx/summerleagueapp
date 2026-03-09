@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminSupabaseClient } from '../../../lib/supabase/admin';
 import { createServerSupabaseClient } from '../../../lib/supabase/server';
+import { socialDisplayName } from '../../../lib/profiles/display';
 
 function testModeAdmin() {
   return process.env.NEXT_PUBLIC_ADMIN_TEST_MODE === 'true' && (process.env.VERCEL_ENV ?? 'development') !== 'production';
@@ -32,13 +33,25 @@ export async function GET(req: NextRequest) {
     threadQ = threadQ.eq('season_id', seasonId);
   }
 
-  const [chat, threads, posts] = await Promise.all([
+  const [chat, threads, posts, profiles] = await Promise.all([
     chatQ,
     threadQ,
     admin.from('forum_posts').select('*').is('deleted_at', null).order('created_at', { ascending: true }),
+    admin.from('profiles').select('user_id,first_name,last_name,display_name'),
   ]);
 
-  return NextResponse.json({ chat: chat.data ?? [], threads: threads.data ?? [], posts: posts.data ?? [] });
+  const profileById = new Map((profiles.data ?? []).map((p: any) => [p.user_id, p]));
+  const mapAuthor = (userId: string | null | undefined) => {
+    if (!userId) return null;
+    const profile = profileById.get(userId);
+    return profile ? socialDisplayName(profile) : null;
+  };
+
+  return NextResponse.json({
+    chat: (chat.data ?? []).map((m: any) => ({ ...m, author_display: mapAuthor(m.user_id) })),
+    threads: (threads.data ?? []).map((th: any) => ({ ...th, author_display: mapAuthor(th.author_id) })),
+    posts: (posts.data ?? []).map((po: any) => ({ ...po, author_display: mapAuthor(po.author_id) })),
+  });
 }
 
 export async function POST(req: NextRequest) {

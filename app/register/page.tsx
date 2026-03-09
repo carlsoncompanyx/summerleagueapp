@@ -154,10 +154,13 @@ export default function RegisterPage() {
         throw new Error('No authenticated user found. Please log in and try again.');
       }
 
+      const displayFallback = `${firstName.trim()} ${lastName.trim()}`.trim();
       const { error: profileError } = await supabase.from('profiles').upsert(
         {
           user_id: userId,
-          display_name: `${firstName.trim()} ${lastName.trim()}`.trim(),
+          first_name: firstName.trim(),
+          last_name: lastName.trim(),
+          display_name: displayFallback || null,
           contact: phone.trim(),
         },
         { onConflict: 'user_id' },
@@ -202,28 +205,31 @@ export default function RegisterPage() {
       if (!sessionUserId) throw new Error('You must be logged in before season registration.');
       if (!seasonId) throw new Error('Please select a season.');
 
-      const { error: registrationError } = await supabase.from('registrations').insert({
+      const officialName = `${firstName.trim()} ${lastName.trim()}`.trim();
+      const primaryPosition = preferredPositions[0] ?? null;
+
+      const { error: playerInsertError } = await supabase.from('players').insert({
         season_id: seasonId,
         user_id: sessionUserId,
-        status: 'pending',
-        preferred_positions: preferredPositions,
-        experience,
+        team_id: null,
+        name: officialName,
+        position: primaryPosition,
       });
 
-      if (registrationError) {
-        if ((registrationError as any).code === '23505') {
-          throw new Error('You are already registered for this season.');
+      if (playerInsertError) {
+        if ((playerInsertError as any).code === '23505') {
+          throw new Error('You already joined this season.');
         }
-        if ((registrationError as any).code === '42501') {
-          throw new Error('Registration save was blocked by Supabase RLS. Please log in again and retry.');
+        if ((playerInsertError as any).code === '42501') {
+          throw new Error('Season join save was blocked by Supabase RLS. Please log in again and retry.');
         }
-        throw registrationError;
+        throw playerInsertError;
       }
 
       setSeasonSuccess(true);
       setStep(3);
     } catch (e: any) {
-      setError(e?.message ?? 'Unable to submit season registration.');
+      setError(e?.message ?? 'Unable to join season.');
     } finally {
       setLoading(false);
     }
@@ -295,7 +301,7 @@ export default function RegisterPage() {
 
         {seasonSuccess ? (
           <div>
-            <p><strong>Season registration submitted.</strong></p>
+            <p><strong>Season join submitted. Player profile is now in this season pool.</strong></p>
             <p><Link href="/">Back to Home</Link></p>
           </div>
         ) : (

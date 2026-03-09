@@ -51,7 +51,7 @@ export default function ChatClient({ seasonId }: { seasonId?: string }) {
           <button type="button" onClick={() => setChatInput((v) => `${v} 🔥`)}>Attach GIF</button>
         </div>
         <div style={{ marginTop: 10 }}>
-          {payload.chat.map((m: any) => <p key={m.id}><span className="badge">{m.role}</span> {m.message}</p>)}
+          {payload.chat.map((m: any) => <p key={m.id}><span className="badge">{m.author_display || m.role}</span> {m.message}</p>)}
           {payload.chat.length === 0 && <p className="muted">No live chat messages yet.</p>}
         </div>
       </section>
@@ -87,8 +87,8 @@ export default function ChatClient({ seasonId }: { seasonId?: string }) {
         {activeTopic && (
           <div style={{ marginTop: 12 }}>
             <h3>{activeTopic.title}</h3>
-            <p>{activeTopic.body}</p>
-            {activePosts.map((reply: any) => <p key={reply.id}>{reply.body}</p>)}
+            <p><span className="badge">{activeTopic.author_display || 'User'}</span> {activeTopic.body}</p>
+            {activePosts.map((reply: any) => <p key={reply.id}><span className="badge">{reply.author_display || 'User'}</span> {reply.body}</p>)}
             <div className="form-field col-12">
               <label htmlFor="reply-input">Reply</label>
               <textarea id="reply-input" rows={2} value={replyInput} onChange={(e) => setReplyInput(e.target.value)} />

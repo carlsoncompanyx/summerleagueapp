@@ -246,8 +246,8 @@ def test_register_flow_page_and_header_links_exist():
     assert 'supabase.auth.signUp' in register_page
     assert 'createBrowserSupabaseClient' in register_page
     assert ".from('profiles')" in register_page
-    assert ".from('registrations')" in register_page
-    assert 'already registered for this season' in register_page
+    assert ".from('players')" in register_page
+    assert 'You already joined this season.' in register_page
     assert 'add column if not exists preferred_positions text[]' in schema
     assert 'add column if not exists experience text' in schema
 
