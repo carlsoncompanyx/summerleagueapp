@@ -22,7 +22,7 @@ const ITEMS = [
   { label: 'Standings', href: '/standings', testId: 'tab-standings', icon: Trophy },
   { label: 'Statistics', href: '/statistics', testId: 'tab-statistics', icon: BarChart2 },
   { label: 'DFS', href: '/dfs', testId: 'tab-dfs', icon: Flame },
-  { label: 'Shit Talk', href: '/chat', testId: 'tab-chat', icon: MessageCircle },
+  { label: 'Community', href: '/chat', testId: 'tab-chat', icon: MessageCircle },
   { label: 'Trades', href: '/trades', testId: 'tab-trades', icon: Repeat },
   { label: 'Admin', href: '/admin', testId: 'tab-admin', icon: ShieldAlert },
 ] as const;

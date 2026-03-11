@@ -65,15 +65,18 @@ export async function getLeagueSnapshot() {
     } as const;
   }
 
-  const [seasonRes, teamRes, gameRes, playerRes, chatRes] = await Promise.all([
+  const [seasonRes, teamRes, gameRes, playerRes, chatRes, slatesRes, contestsRes, slateGamesRes] = await Promise.all([
     supabase.from('seasons').select('id, name, start_date, end_date').order('start_date', { ascending: false }).limit(1).maybeSingle(),
     supabase.from('teams').select('id, name').order('name'),
     supabase.from('games').select('id, season_id, home_team, away_team, scheduled_at, location, status, home_score, away_score').order('scheduled_at'),
     supabase.from('players').select('id, name, team_id, position, nickname').order('name'),
     supabase.from('chat_messages').select('id, message, created_at, role').order('created_at', { ascending: false }).limit(20),
+    supabase.from('slates').select('id,name,lock_at,status,is_default_weekly,source_game_date').order('lock_at', { ascending: true }),
+    supabase.from('contests').select('id,slate_id,name,status,salary_cap,entry_fee_cents').order('lock_at', { ascending: true }),
+    supabase.from('slate_games').select('slate_id,game_id'),
   ]);
 
-  if (seasonRes.error || teamRes.error || gameRes.error || playerRes.error || chatRes.error) {
+  if (seasonRes.error || teamRes.error || gameRes.error || playerRes.error || chatRes.error || slatesRes.error || contestsRes.error || slateGamesRes.error) {
     return {
       unavailable: true,
       reason: `Unable to fetch league data. Errors: ${JSON.stringify({
@@ -82,6 +85,9 @@ export async function getLeagueSnapshot() {
         games: gameRes.error?.message,
         players: playerRes.error?.message,
         chat_messages: chatRes.error?.message,
+        slates: slatesRes.error?.message,
+        contests: contestsRes.error?.message,
+        slate_games: slateGamesRes.error?.message,
         usingServiceRole: Boolean(adminClient),
         env: envStatus(),
       })}`,
@@ -161,6 +167,16 @@ export async function getLeagueSnapshot() {
     }))
     .slice(0, 20);
 
+
+  const slates = slatesRes.data ?? [];
+  const contests = contestsRes.data ?? [];
+  const slateGames = slateGamesRes.data ?? [];
+  const nowMs = Date.now();
+  const nextSlate = slates.find((s: any) => new Date(s.lock_at).getTime() > nowMs) || slates[0] || null;
+  const nextSlateGameIds = nextSlate ? new Set(slateGames.filter((sg: any) => sg.slate_id === nextSlate.id).map((sg: any) => sg.game_id)) : new Set<string>();
+  const nextSlateGames = nextSlate ? schedule.filter((g) => nextSlateGameIds.has(g.id)) : [];
+  const nextSlateContest = nextSlate ? contests.find((c: any) => c.slate_id === nextSlate.id) ?? null : null;
+
   return {
     unavailable: false,
     season,
@@ -170,5 +186,6 @@ export async function getLeagueSnapshot() {
     leaders,
     players: rosterPlayers,
     chatMessages,
+    nextSlate: nextSlate ? { ...nextSlate, games: nextSlateGames, contest: nextSlateContest } : null,
   } as const;
 }

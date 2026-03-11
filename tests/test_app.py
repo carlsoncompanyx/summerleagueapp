@@ -6,7 +6,7 @@ def test_nextjs_app_shell_exists():
     nav = Path('components/NavTabs.tsx').read_text()
     layout = Path('app/layout.tsx').read_text()
     assert 'Emerald Coast Roller League' in layout
-    for tab in ['Home', 'Games', 'Standings', 'Statistics', 'DFS', 'Shit Talk', 'Trades', 'Admin']:
+    for tab in ['Home', 'Games', 'Standings', 'Statistics', 'DFS', 'Community', 'Trades', 'Admin']:
         assert tab in nav
 
 
