@@ -20,16 +20,16 @@ test('standings tab navigates to /standings and shows Standings heading', async 
   await expect(page.getByRole('heading', { name: 'Standings' })).toBeVisible();
 });
 
-test('chat tab navigates to /chat and shows Shit Talk heading', async ({ page }) => {
+test('chat tab navigates to /chat and shows Community heading', async ({ page }) => {
   await page.goto('/');
   await page.getByTestId('tab-chat').click();
   await expect(page).toHaveURL(/\/chat$/);
-  await expect(page.getByRole('heading', { name: 'Shit Talk' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Community' })).toBeVisible();
 });
 
-test('betting tab shows login for unauthenticated users', async ({ page }) => {
+test('dfs tab shows current slate games section', async ({ page }) => {
   await page.goto('/');
-  await page.getByTestId('tab-betting').click();
-  await expect(page).toHaveURL(/\/betting$/);
-  await expect(page.getByRole('link', { name: 'Login' })).toBeVisible();
+  await page.getByTestId('tab-dfs').click();
+  await expect(page).toHaveURL(/\/dfs$/);
+  await expect(page.getByRole('heading', { name: 'Current Slate Games' })).toBeVisible();
 });

@@ -6,14 +6,14 @@ import FantasyPlayerModal from './FantasyPlayerModal';
 const SLOT_CONFIG = ['CAPTAIN', 'SKATER_1', 'SKATER_2', 'SKATER_3', 'SKATER_4', 'GOALIE'];
 
 export default function DfsClient() {
-  const [data, setData] = useState<any>({ slates: [], contests: [], slatePlayers: [], slateGames: [], recommendedSlateId: null, myEntries: [], actor: { role: 'FAN' } });
+  const [data, setData] = useState<any>({ slates: [], contests: [], seasons: [], slatePlayers: [], slateGames: [], recommendedSlateId: null, myEntries: [], actor: { role: 'FAN' } });
   const [selectedSlate, setSelectedSlate] = useState('');
   const [selectedContest, setSelectedContest] = useState('');
   const [lineupName, setLineupName] = useState('My Entry');
   const [slots, setSlots] = useState<any[]>(SLOT_CONFIG.map((slot) => ({ slot, player_id: '' })));
   const [msg, setMsg] = useState('');
   const [seasonIdForCreate, setSeasonIdForCreate] = useState('');
-  const [newSlateName, setNewSlateName] = useState('Weekly Slate');
+  const [newSlateName, setNewSlateName] = useState('Custom Slate');
   const [newSlateLock, setNewSlateLock] = useState('');
   const [newContestName, setNewContestName] = useState('Main Contest');
   const [newContestLock, setNewContestLock] = useState('');
@@ -29,13 +29,20 @@ export default function DfsClient() {
     const json = await res.json();
     setData(json);
 
+    if (!seasonIdForCreate && json?.seasons?.length) {
+      const seasonIdsInSlateOrder = (json?.slates ?? []).map((s: any) => s.season_id).filter(Boolean);
+      const preferredSeason = seasonIdsInSlateOrder[0] || json.seasons[0]?.id;
+      if (preferredSeason) setSeasonIdForCreate(preferredSeason);
+    }
+
     if (!selectedSlate && json?.recommendedSlateId) {
       setSelectedSlate(json.recommendedSlateId);
     }
 
     if (!selectedContest && json?.contests?.length) {
-      const recommendedContest = json.contests.find((c: any) => c.slate_id === (slateId || json.recommendedSlateId) && ['open', 'live'].includes(String(c.status || '').toLowerCase()))
-        || json.contests.find((c: any) => c.slate_id === (slateId || json.recommendedSlateId))
+      const targetSlate = slateId || json.recommendedSlateId;
+      const recommendedContest = json.contests.find((c: any) => c.slate_id === targetSlate && ['open', 'live'].includes(String(c.status || '').toLowerCase()))
+        || json.contests.find((c: any) => c.slate_id === targetSlate)
         || json.contests[0];
       if (recommendedContest) setSelectedContest(recommendedContest.id);
     }
@@ -88,15 +95,16 @@ export default function DfsClient() {
   async function createSlate() {
     try {
       setMsg('');
+      if (!seasonIdForCreate) throw new Error('Select a season first.');
       const json = await post('create_slate', {
         season_id: seasonIdForCreate,
         name: newSlateName,
-        lock_at: newSlateLock,
+        lock_at: newSlateLock || null,
         game_ids: [],
         status: 'draft',
       });
       setSelectedSlate(json.slate.id);
-      setMsg('Slate created with snapshotted pricing/projections.');
+      setMsg('Custom slate created with snapshotted pricing/projections.');
       await load(json.slate.id);
     } catch (e: any) {
       setMsg(`Error: ${e.message}`);
@@ -109,23 +117,23 @@ export default function DfsClient() {
       await post('create_contest', {
         slate_id: selectedSlate,
         name: newContestName,
-        lock_at: newContestLock,
+        lock_at: newContestLock || null,
         salary_cap: Number(newContestCap),
         max_entries: Number(newContestMaxEntries),
         status: 'open',
       });
-      setMsg('Contest created.');
+      setMsg('Custom contest created.');
       await load(selectedSlate || undefined);
     } catch (e: any) {
       setMsg(`Error: ${e.message}`);
     }
   }
 
-  async function generateWeeklyDefault() {
+  async function generateDefaultSlate() {
     try {
       const json = await post('auto_generate_default_next_slate_day', {});
       setSelectedSlate(json.slateId);
-      setMsg(`Default next slate day is ready (${json.gameCount ?? 0} games).`);
+      setMsg(`Default next slate day ready (${json.gameCount ?? 0} games).`);
       await load(json.slateId);
     } catch (e: any) {
       setMsg(`Error: ${e.message}`);
@@ -148,7 +156,8 @@ export default function DfsClient() {
       setPlayerModalOpen(true);
       setPlayerModalLoading(true);
       setSelectedPlayerContext({ salary: player.salary, projection: player.projection_points });
-      const res = await fetch(`/api/dfs?player_id=${player.player_id}${selectedSlate ? `&season_id=${encodeURIComponent((data.slates.find((s: any) => s.id === selectedSlate)?.season_id) || '')}` : ''}`);
+      const seasonForSlate = data.slates.find((s: any) => s.id === selectedSlate)?.season_id;
+      const res = await fetch(`/api/dfs?player_id=${player.player_id}${seasonForSlate ? `&season_id=${encodeURIComponent(seasonForSlate)}` : ''}`);
       const json = await res.json();
       setPlayerModalData(json);
     } finally {
@@ -161,27 +170,27 @@ export default function DfsClient() {
   return (
     <main>
       <h1>DFS</h1>
-      <p className="muted">Lineup format: 1 Captain, 4 Skaters, 1 Goalie. Captain uses 1.5x salary and 1.5x scoring.</p>
+      <p className="muted">Lineup: 1 Captain, 4 Skaters, 1 Goalie. Captain uses 1.5x salary and 1.5x scoring.</p>
       {msg && <p>{msg}</p>}
 
       {isAdmin && (
         <section className="card" style={{ marginBottom: 12 }}>
           <h2 className="section-title">Admin DFS Controls</h2>
           <div className="form-actions" style={{ marginTop: 0 }}>
-            <button onClick={generateWeeklyDefault}>Auto-Generate Upcoming Weekly Default Slate + Contest</button>
+            <button onClick={generateDefaultSlate}>Generate Next Playable Default Slate</button>
             <button onClick={scoreContest} disabled={!selectedContest}>Score Selected Contest</button>
           </div>
 
           <div className="form-grid">
-            <div className="form-field col-4"><label>Season ID</label><input value={seasonIdForCreate} onChange={(e) => setSeasonIdForCreate(e.target.value)} placeholder="season uuid" /></div>
+            <div className="form-field col-4"><label>Season</label><select value={seasonIdForCreate} onChange={(e) => setSeasonIdForCreate(e.target.value)}><option value="">Select season...</option>{(data.seasons ?? []).map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
             <div className="form-field col-4"><label>Slate Name</label><input value={newSlateName} onChange={(e) => setNewSlateName(e.target.value)} /></div>
-            <div className="form-field col-4"><label>Slate Lock</label><input type="datetime-local" value={newSlateLock} onChange={(e) => setNewSlateLock(e.target.value)} /></div>
+            <div className="form-field col-4"><label>Slate Lock (optional)</label><input type="datetime-local" value={newSlateLock} onChange={(e) => setNewSlateLock(e.target.value)} /></div>
             <div className="form-actions"><button onClick={createSlate}>Create Custom Slate</button></div>
           </div>
 
           <div className="form-grid" style={{ marginTop: 12 }}>
             <div className="form-field col-6"><label>Contest Name</label><input value={newContestName} onChange={(e) => setNewContestName(e.target.value)} /></div>
-            <div className="form-field col-6"><label>Contest Lock</label><input type="datetime-local" value={newContestLock} onChange={(e) => setNewContestLock(e.target.value)} /></div>
+            <div className="form-field col-6"><label>Contest Lock (optional)</label><input type="datetime-local" value={newContestLock} onChange={(e) => setNewContestLock(e.target.value)} /></div>
             <div className="form-field col-6"><label>Salary Cap</label><input value={newContestCap} onChange={(e) => setNewContestCap(e.target.value)} /></div>
             <div className="form-field col-6"><label>Max Entries / User</label><input value={newContestMaxEntries} onChange={(e) => setNewContestMaxEntries(e.target.value)} /></div>
             <div className="form-actions"><button onClick={createContest} disabled={!selectedSlate}>Create Custom Contest</button></div>

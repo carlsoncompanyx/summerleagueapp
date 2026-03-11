@@ -58,12 +58,13 @@ export async function GET(req: NextRequest) {
   }
 
   const admin = createAdminSupabaseClient();
-  const [slates, contests, slatePlayers] = await Promise.all([
+  const [slates, contests, slatePlayers, seasons] = await Promise.all([
     admin.from('slates').select('*').order('lock_at', { ascending: true }),
     admin.from('contests').select('*').order('lock_at', { ascending: true }),
     slateId
       ? admin.from('slate_players').select('*').eq('slate_id', slateId).order('projection_points', { ascending: false })
       : Promise.resolve({ data: [] as any[] }),
+    admin.from('seasons').select('id,name,start_date,end_date').order('start_date', { ascending: false }),
   ]);
 
   const rawPlayers = (slatePlayers as any).data ?? [];
@@ -111,6 +112,7 @@ export async function GET(req: NextRequest) {
     actor,
     slates: slates.data ?? [],
     contests: contests.data ?? [],
+    seasons: seasons.data ?? [],
     slatePlayers: merged,
     slateGames: slateGameRows.map((g: any) => ({
       ...g,

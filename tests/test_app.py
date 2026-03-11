@@ -6,7 +6,7 @@ def test_nextjs_app_shell_exists():
     nav = Path('components/NavTabs.tsx').read_text()
     layout = Path('app/layout.tsx').read_text()
     assert 'Emerald Coast Roller League' in layout
-    for tab in ['Home', 'Games', 'Standings', 'Statistics', 'Betting', 'DFS', 'Shit Talk', 'Wallet', 'Trades', 'Admin']:
+    for tab in ['Home', 'Games', 'Standings', 'Statistics', 'DFS', 'Shit Talk', 'Trades', 'Admin']:
         assert tab in nav
 
 
@@ -120,7 +120,6 @@ def test_playwright_e2e_files_and_scripts_exist():
     assert 'tab-standings' in navtabs
     assert 'tab-statistics' in navtabs
     assert 'tab-chat' in navtabs
-    assert 'tab-betting' in navtabs
     assert 'tab-dfs' in navtabs
 
     e2e = Path('e2e/navigation.spec.ts').read_text()
@@ -128,13 +127,12 @@ def test_playwright_e2e_files_and_scripts_exist():
     assert 'tab-schedule' in e2e
     assert 'tab-standings' in e2e
     assert 'tab-chat' in e2e
-    assert 'tab-betting' in e2e
 
 
 def test_chat_and_betting_headings_match_e2e_expectations():
     chat = Path('app/chat/page.tsx').read_text()
     betting = Path('app/betting/page.tsx').read_text()
-    assert 'Shit Talk' in chat
+    assert 'Community' in chat
     assert 'Login' in betting
 
 
@@ -167,7 +165,7 @@ def test_home_has_required_banner_sections():
 
 def test_chat_has_message_board_and_chatroom_sections():
     chat = Path('components/ChatClient.tsx').read_text()
-    assert 'Message Board' in chat
+    assert 'Forums' in chat
     assert 'Live Chatroom' in chat
 
 
@@ -205,9 +203,10 @@ def test_statistics_page_has_leaderboard_and_team_filter():
     assert '<th>GAA</th>' in stats_client
 
 
-def test_chat_page_has_chatroom_first_and_message_board_actions():
+def test_chat_page_has_tabbed_chat_and_forums_actions():
     chat = Path('components/ChatClient.tsx').read_text()
-    assert chat.index('Live Chatroom') < chat.index('Message Board')
+    assert 'Chat Room' in chat
+    assert 'Forums' in chat
     assert 'New Post' in chat
     assert 'Refresh' in chat
     assert "chat_send" in chat

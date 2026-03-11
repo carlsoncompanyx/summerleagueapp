@@ -5,12 +5,10 @@ import { usePathname } from 'next/navigation';
 import {
   BarChart2,
   Calendar,
-  DollarSign,
   Flame,
   Home,
   MessageCircle,
   Repeat,
-  Settings,
   ShieldAlert,
   Trophy,
 } from 'lucide-react';
@@ -23,10 +21,8 @@ const ITEMS = [
   { label: 'Games', href: '/schedule', testId: 'tab-schedule', icon: Calendar },
   { label: 'Standings', href: '/standings', testId: 'tab-standings', icon: Trophy },
   { label: 'Statistics', href: '/statistics', testId: 'tab-statistics', icon: BarChart2 },
-  { label: 'Betting', href: '/betting', testId: 'tab-betting', icon: DollarSign },
   { label: 'DFS', href: '/dfs', testId: 'tab-dfs', icon: Flame },
   { label: 'Shit Talk', href: '/chat', testId: 'tab-chat', icon: MessageCircle },
-  { label: 'Wallet', href: '/wallet', testId: 'tab-wallet', icon: Settings },
   { label: 'Trades', href: '/trades', testId: 'tab-trades', icon: Repeat },
   { label: 'Admin', href: '/admin', testId: 'tab-admin', icon: ShieldAlert },
 ] as const;
