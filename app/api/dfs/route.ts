@@ -29,11 +29,21 @@ async function getCurrentActor() {
 }
 
 function validateSlots(slots: any[]) {
-  const slotsSet = new Set(slots.map((s) => s.slot));
+  const normalizedSlots = (slots ?? []).map((s) => ({
+    slot: String(s?.slot ?? ''),
+    player_id: String(s?.player_id ?? '').trim(),
+  }));
+  const slotsSet = new Set(normalizedSlots.map((s) => s.slot));
   for (const required of REQUIRED_SLOTS) {
     if (!slotsSet.has(required)) return `Missing required slot: ${required}`;
   }
-  if (slots.length !== REQUIRED_SLOTS.length) return 'Lineup must have exactly 1 Captain, 4 Skaters, 1 Goalie.';
+  if (normalizedSlots.length !== REQUIRED_SLOTS.length) return 'Lineup must have exactly 1 Captain, 4 Skaters, 1 Goalie.';
+
+  for (const required of REQUIRED_SLOTS) {
+    const row = normalizedSlots.find((s) => s.slot === required);
+    if (!row?.player_id) return `All lineup slots must be filled before submitting. Missing player for ${required}.`;
+  }
+
   return null;
 }
 
@@ -108,7 +118,7 @@ export async function GET(req: NextRequest) {
     : undefined;
 
   const { data: fantasyRows } = ids.length && slateSeasonId
-    ? await admin.from('fantasy_points_v').select('player_id,goals,assists,points,fantasy_points').eq('season_id', slateSeasonId).in('player_id', ids)
+    ? await admin.from('fantasy_points_v').select('player_id,goals,assists,points,fantasy_points,fantasy_points_avg,games_played').eq('season_id', slateSeasonId).in('player_id', ids)
     : { data: [] as any[] };
 
   const teamById = new Map((teams ?? []).map((t: any) => [t.id, t.name]));

@@ -171,6 +171,13 @@ export async function buildSlateValuations({
 
   const skaterLeagueAverage = mean(skaterSeasonAverages);
   const goalieLeagueAverage = mean(goalieSeasonAverages);
+  const historicalLeagueAverageSkater = mean(
+    (historical ?? []).map((r: any) => {
+      const gpg = Number(r.goals ?? 0) / 16;
+      const apg = Number(r.assists ?? 0) / 16;
+      return 3 * gpg + 2 * apg;
+    }).filter((n: number) => Number.isFinite(n) && n > 0),
+  );
 
   const candidates = players.map((p: any) => {
     const seasonStat = seasonByPlayer.get(p.id);
@@ -213,6 +220,7 @@ export async function buildSlateValuations({
       ?? currentProjection
       ?? historicalSkaterPerGame
       ?? skaterLeagueAverage
+      ?? historicalLeagueAverageSkater
       ?? fallback,
     );
 
@@ -232,7 +240,7 @@ export async function buildSlateValuations({
         ? 'current_sample'
         : !isGoalie && historicalSkaterPerGame != null
           ? 'historical_16_game_rate'
-          : !isGoalie && skaterLeagueAverage != null
+          : !isGoalie && (skaterLeagueAverage != null || historicalLeagueAverageSkater != null)
             ? 'league_average_fallback'
             : isGoalie && goalieLeagueAverage != null
               ? 'goalie_league_average_fallback'
@@ -262,6 +270,9 @@ export async function buildSlateValuations({
     byPosition.get(pos)!.push(row.projection);
   }
 
+  const skaterProjectionMean = mean(byPosition.get('SKATER') ?? []);
+  const goalieProjectionMean = mean(byPosition.get('GOALIE') ?? []);
+
   function normalizeWithinPosition(value: number, position: 'SKATER' | 'GOALIE') {
     const values = byPosition.get(position) ?? [value];
     const min = Math.min(...values);
@@ -274,9 +285,11 @@ export async function buildSlateValuations({
     const pos: 'SKATER' | 'GOALIE' = row.isGoalie ? 'GOALIE' : 'SKATER';
     const norm = normalizeWithinPosition(row.projection, pos);
 
+    const positionMean = row.isGoalie ? (goalieProjectionMean ?? row.projection) : (skaterProjectionMean ?? row.projection);
+    const projectionDelta = row.projection - positionMean;
     const seedSalary = row.isGoalie
-      ? Math.round(6900 + norm * 1800)
-      : Math.round(5400 + norm * 4200);
+      ? Math.round(7000 + norm * 2200 + projectionDelta * 180)
+      : Math.round(6000 + norm * 5200 + projectionDelta * 260);
 
     const gradeBoost = row.isGoalie
       ? (row.grade === 'A' ? 450 : row.grade === 'B' ? 250 : row.grade === 'D' ? -220 : row.grade === 'F' ? -400 : 0)

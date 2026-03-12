@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import FantasyPlayerModal from './FantasyPlayerModal';
 
 type SlotKey = 'CAPTAIN' | 'SKATER_1' | 'SKATER_2' | 'SKATER_3' | 'SKATER_4' | 'GOALIE';
-type SortKey = 'name' | 'team' | 'position' | 'salary' | 'projection' | 'goals' | 'assists' | 'points' | 'fantasy';
+type SortKey = 'name' | 'team' | 'position' | 'salary' | 'past_fppg';
 type DfsTab = 'submit' | 'leaderboard';
 
 const SLOT_CONFIG: SlotKey[] = ['CAPTAIN', 'SKATER_1', 'SKATER_2', 'SKATER_3', 'SKATER_4', 'GOALIE'];
@@ -27,7 +27,7 @@ export default function DfsClient() {
   const [selectedPlayerContext, setSelectedPlayerContext] = useState<{ salary?: number; projection?: number; playerId?: string }>({});
   const [positionFilter, setPositionFilter] = useState<'ALL' | 'SKATERS' | 'GOALIES'>('ALL');
   const [search, setSearch] = useState('');
-  const [sortKey, setSortKey] = useState<SortKey>('projection');
+  const [sortKey, setSortKey] = useState<SortKey>('salary');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
   async function load(opts?: { slateId?: string; contestId?: string }) {
@@ -75,13 +75,10 @@ export default function DfsClient() {
     return sum + ((sp?.salary || 0) * mult);
   }, 0), [slots, data.slatePlayers]);
 
-  const projectedTotal = useMemo(() => slots.reduce((sum, s) => {
-    const sp = data.slatePlayers.find((p: any) => p.player_id === s.player_id);
-    const mult = s.slot === 'CAPTAIN' ? 1.5 : 1;
-    return sum + (Number(sp?.projection_points || 0) * mult);
-  }, 0), [slots, data.slatePlayers]);
-
   const salaryRemaining = Number(currentContest?.salary_cap ?? 0) - salaryUsed;
+
+  const incompleteSlots = useMemo(() => slots.filter((s) => !String(s.player_id || '').trim()).map((s) => s.slot as SlotKey), [slots]);
+  const lineupComplete = incompleteSlots.length === 0;
 
   async function post(action: string, payload: any) {
     const res = await fetch('/api/dfs', {
@@ -97,6 +94,10 @@ export default function DfsClient() {
   async function submit() {
     try {
       setMsg('');
+      if (!lineupComplete) {
+        setMsg(`Lineup incomplete. Fill all required slots: ${incompleteSlots.map((slot) => slotLabel(slot)).join(', ')}.`);
+        return;
+      }
       const json = await post(editingEntryId ? 'update_entry' : 'submit_entry', editingEntryId
         ? { entry_id: editingEntryId, slots }
         : { contest_id: selectedContest, slots });
@@ -234,7 +235,7 @@ export default function DfsClient() {
     try {
       setPlayerModalOpen(true);
       setPlayerModalLoading(true);
-      setSelectedPlayerContext({ salary: player.salary, projection: player.projection_points, playerId: player.player_id });
+      setSelectedPlayerContext({ salary: player.salary, playerId: player.player_id });
       const seasonForSlate = data.slates.find((s: any) => s.id === selectedSlate)?.season_id;
       const res = await fetch(`/api/dfs?player_id=${player.player_id}${seasonForSlate ? `&season_id=${encodeURIComponent(seasonForSlate)}` : ''}`);
       const json = await res.json();
@@ -244,13 +245,19 @@ export default function DfsClient() {
     }
   }
 
+  function getPlayerPastFppg(player: any) {
+    const currentAvg = Number(player.stats?.fantasy_points_avg);
+    if (Number.isFinite(currentAvg) && currentAvg > 0) return currentAvg;
+
+    const historicalAvg = Number(player.historical_projection_input);
+    if (Number.isFinite(historicalAvg) && historicalAvg > 0) return historicalAvg;
+
+    return null;
+  }
+
   function getNumericPlayerField(player: any, key: SortKey) {
     if (key === 'salary') return Number(player.salary || 0);
-    if (key === 'projection') return Number(player.projection_points || 0);
-    if (key === 'goals') return Number(player.stats?.goals || 0);
-    if (key === 'assists') return Number(player.stats?.assists || 0);
-    if (key === 'points') return Number(player.stats?.points || 0);
-    if (key === 'fantasy') return Number(player.stats?.fantasy_points || 0);
+    if (key === 'past_fppg') return Number(getPlayerPastFppg(player) || 0);
     return 0;
   }
 
@@ -268,7 +275,7 @@ export default function DfsClient() {
 
     return filtered.sort((a: any, b: any) => {
       let result = 0;
-      if (['salary', 'projection', 'goals', 'assists', 'points', 'fantasy'].includes(sortKey)) {
+      if (['salary', 'past_fppg'].includes(sortKey)) {
         result = getNumericPlayerField(a, sortKey) - getNumericPlayerField(b, sortKey);
       } else if (sortKey === 'team') {
         result = String(a.player?.team_name || '').localeCompare(String(b.player?.team_name || ''));
@@ -335,19 +342,18 @@ export default function DfsClient() {
         <section className="card" style={{ marginBottom: 12 }}>
           <h2 className="section-title">Leaderboard</h2>
           <table className="table">
-            <thead><tr><th>Rank</th><th>Entry</th><th>User</th><th>Projected</th><th>Actual</th><th>Submitted</th></tr></thead>
+            <thead><tr><th>Rank</th><th>Entry</th><th>User</th><th>Actual</th><th>Submitted</th></tr></thead>
             <tbody>
               {(data.leaderboardEntries ?? []).map((e: any, idx: number) => (
                 <tr key={e.id}>
                   <td>{e.rank ?? (idx + 1)}</td>
                   <td>{e.lineup_name || `Entry #${idx + 1}`}</td>
                   <td>{e.user_display}</td>
-                  <td>{Number(e.projected_points ?? 0).toFixed(2)}</td>
                   <td>{Number(e.actual_points ?? 0).toFixed(2)}</td>
                   <td>{new Date(e.created_at).toLocaleString()}</td>
                 </tr>
               ))}
-              {!data.leaderboardEntries?.length && <tr><td colSpan={6} className="muted">No entries submitted for this contest yet.</td></tr>}
+              {!data.leaderboardEntries?.length && <tr><td colSpan={5} className="muted">No entries submitted for this contest yet.</td></tr>}
             </tbody>
           </table>
         </section>
@@ -377,10 +383,7 @@ export default function DfsClient() {
                       <th><button type="button" className="link-button" onClick={() => changeSort('team')}>Team</button></th>
                       <th><button type="button" className="link-button" onClick={() => changeSort('position')}>Pos</button></th>
                       <th><button type="button" className="link-button" onClick={() => changeSort('salary')}>Salary</button></th>
-                      <th><button type="button" className="link-button" onClick={() => changeSort('projection')}>Proj</button></th>
-                      <th><button type="button" className="link-button" onClick={() => changeSort('goals')}>G</button></th>
-                      <th><button type="button" className="link-button" onClick={() => changeSort('assists')}>A</button></th>
-                      <th><button type="button" className="link-button" onClick={() => changeSort('points')}>P</button></th>
+                      <th><button type="button" className="link-button" onClick={() => changeSort('past_fppg')}>Past FPPG</button></th>
                       <th>Add</th>
                     </tr>
                   </thead>
@@ -400,15 +403,12 @@ export default function DfsClient() {
                           <td>{p.player?.team_name || '-'}</td>
                           <td>{p.player?.position || p.position || '-'}</td>
                           <td>${p.salary}</td>
-                          <td>{Number(p.projection_points || 0).toFixed(2)}</td>
-                          <td>{p.stats?.goals ?? 0}</td>
-                          <td>{p.stats?.assists ?? 0}</td>
-                          <td>{p.stats?.points ?? 0}</td>
+                          <td>{(() => { const v = getPlayerPastFppg(p); return v != null ? v.toFixed(2) : '—'; })()}</td>
                           <td><button type="button" onClick={() => addPlayerToLineup(p)} disabled={isOut}>Add</button></td>
                         </tr>
                       );
                     })}
-                    {!visiblePlayers.length && <tr><td colSpan={9} className="muted">No players match the current filters.</td></tr>}
+                    {!visiblePlayers.length && <tr><td colSpan={6} className="muted">No players match the current filters.</td></tr>}
                   </tbody>
                 </table>
               </div>
@@ -448,13 +448,13 @@ export default function DfsClient() {
 
               <p className="muted">Active slot: <strong>{slotLabel(activeSlot)}</strong>{manualSlotTargeting ? ' (manual target)' : ' (auto add enabled)'}</p>
               <p className="muted">Salary used: {Math.round(salaryUsed)} / {currentContest?.salary_cap ?? '—'} · Remaining: {isNaN(salaryRemaining) ? '—' : Math.round(salaryRemaining)}</p>
-              <p className="muted">Projected total: {projectedTotal.toFixed(2)}</p>
+              {!lineupComplete && <p className="muted">Lineup incomplete. Missing: {incompleteSlots.map((slot) => slotLabel(slot)).join(', ')}.</p>}
               {slots.some((s) => {
                 const sp = data.slatePlayers.find((p: any) => p.player_id === s.player_id);
                 return sp && String(sp.availability_status || 'AVAILABLE').toUpperCase() === 'OUT';
               }) && <p className="muted">⚠ This lineup includes player(s) marked Out. Replace them before saving.</p>}
               <div className="form-actions" style={{ marginTop: 8 }}>
-                <button type="button" onClick={submit} disabled={!selectedContest || salaryRemaining < 0}>{editingEntryId ? 'Save Lineup Update' : 'Submit Entry'}</button>
+                <button type="button" onClick={submit} disabled={!selectedContest || salaryRemaining < 0 || !lineupComplete}>{editingEntryId ? 'Save Lineup Update' : 'Submit Entry'}</button>
                 {editingEntryId && <button type="button" onClick={() => { setEditingEntryId(null); setSlots(SLOT_CONFIG.map((slot) => ({ slot, player_id: '' }))); setManualSlotTargeting(false); setMsg('Edit canceled.'); }}>Cancel Edit</button>}
               </div>
             </section>
@@ -463,10 +463,10 @@ export default function DfsClient() {
           <section className="card" style={{ marginBottom: 12 }}>
             <h2 className="section-title">My Entries</h2>
             <table className="table">
-              <thead><tr><th>Entry</th><th>Contest</th><th>Salary</th><th>Projected</th><th>Actual</th><th>Submitted</th><th>Status</th><th>Action</th></tr></thead>
+              <thead><tr><th>Entry</th><th>Contest</th><th>Salary</th><th>Actual</th><th>Submitted</th><th>Status</th><th>Action</th></tr></thead>
               <tbody>
                 {(data.myEntries ?? []).map((e: any, idx: number) => (
-                  <tr key={e.id}><td>{e.display_label || e.lineup_name || `Entry #${idx + 1}`}</td><td>{e.contest_name || e.contest_id}</td><td>{e.salary_used}</td><td>{e.projected_points}</td><td>{e.actual_points}</td><td>{new Date(e.created_at).toLocaleString()}</td><td>{(() => {
+                  <tr key={e.id}><td>{e.display_label || e.lineup_name || `Entry #${idx + 1}`}</td><td>{e.contest_name || e.contest_id}</td><td>{e.salary_used}</td><td>{e.actual_points}</td><td>{new Date(e.created_at).toLocaleString()}</td><td>{(() => {
                     const contest = data.contests.find((c: any) => c.id === e.contest_id);
                     const lockAt = contest?.lock_at ? new Date(contest.lock_at).getTime() : null;
                     if (lockAt && lockAt <= Date.now()) return 'Locked';
@@ -481,7 +481,7 @@ export default function DfsClient() {
                     return Boolean(lockAt && lockAt <= Date.now());
                   })()}>Update</button></td></tr>
                 ))}
-                {!data.myEntries?.length && <tr><td colSpan={8} className="muted">No entries yet. Pick a contest and submit your lineup.</td></tr>}
+                {!data.myEntries?.length && <tr><td colSpan={7} className="muted">No entries yet. Pick a contest and submit your lineup.</td></tr>}
               </tbody>
             </table>
           </section>
