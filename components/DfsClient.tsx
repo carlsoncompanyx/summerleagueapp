@@ -5,24 +5,20 @@ import FantasyPlayerModal from './FantasyPlayerModal';
 
 type SlotKey = 'CAPTAIN' | 'SKATER_1' | 'SKATER_2' | 'SKATER_3' | 'SKATER_4' | 'GOALIE';
 type SortKey = 'name' | 'team' | 'position' | 'salary' | 'projection' | 'goals' | 'assists' | 'points' | 'fantasy';
+type DfsTab = 'submit' | 'leaderboard';
 
 const SLOT_CONFIG: SlotKey[] = ['CAPTAIN', 'SKATER_1', 'SKATER_2', 'SKATER_3', 'SKATER_4', 'GOALIE'];
 
 export default function DfsClient() {
-  const [data, setData] = useState<any>({ slates: [], contests: [], seasons: [], slatePlayers: [], slateGames: [], recommendedSlateId: null, myEntries: [], actor: { role: 'FAN' } });
+  const [data, setData] = useState<any>({
+    slates: [], contests: [], seasons: [], slatePlayers: [], slateGames: [], recommendedSlateId: null, myEntries: [], leaderboardEntries: [], actor: { role: 'FAN' },
+  });
   const [selectedSlate, setSelectedSlate] = useState('');
   const [selectedContest, setSelectedContest] = useState('');
-  const [lineupName, setLineupName] = useState('My Entry');
   const [slots, setSlots] = useState<any[]>(SLOT_CONFIG.map((slot) => ({ slot, player_id: '' })));
   const [activeSlot, setActiveSlot] = useState<SlotKey>('CAPTAIN');
   const [msg, setMsg] = useState('');
-  const [seasonIdForCreate, setSeasonIdForCreate] = useState('');
-  const [newSlateName, setNewSlateName] = useState('Custom Slate');
-  const [newSlateLock, setNewSlateLock] = useState('');
-  const [newContestName, setNewContestName] = useState('Main Contest');
-  const [newContestLock, setNewContestLock] = useState('');
-  const [newContestCap, setNewContestCap] = useState('50000');
-  const [newContestMaxEntries, setNewContestMaxEntries] = useState('5');
+  const [activeTab, setActiveTab] = useState<DfsTab>('submit');
   const [playerModalOpen, setPlayerModalOpen] = useState(false);
   const [playerModalLoading, setPlayerModalLoading] = useState(false);
   const [playerModalData, setPlayerModalData] = useState<any>(null);
@@ -32,40 +28,42 @@ export default function DfsClient() {
   const [sortKey, setSortKey] = useState<SortKey>('projection');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
-  async function load(slateId?: string) {
-    const res = await fetch(`/api/dfs${slateId ? `?slate_id=${slateId}` : ''}`);
+  async function load(opts?: { slateId?: string; contestId?: string }) {
+    const slateId = opts?.slateId ?? selectedSlate;
+    const contestId = opts?.contestId ?? selectedContest;
+    const q = new URLSearchParams();
+    if (slateId) q.set('slate_id', slateId);
+    if (contestId) q.set('contest_id', contestId);
+    const res = await fetch(`/api/dfs${q.toString() ? `?${q}` : ''}`);
     const json = await res.json();
     setData(json);
 
-    if (!seasonIdForCreate && json?.seasons?.length) {
-      const seasonIdsInSlateOrder = (json?.slates ?? []).map((s: any) => s.season_id).filter(Boolean);
-      const preferredSeason = seasonIdsInSlateOrder[0] || json.seasons[0]?.id;
-      if (preferredSeason) setSeasonIdForCreate(preferredSeason);
-    }
+    const activeContests = (json?.contests ?? []).filter((c: any) => ['open', 'live'].includes(String(c.status || '').toLowerCase()));
+    const fallbackContest = activeContests[0] || json.contests?.[0] || null;
+    const nextContestId = contestId || fallbackContest?.id || '';
+    if (nextContestId && nextContestId !== selectedContest) setSelectedContest(nextContestId);
 
-    if (!selectedSlate && json?.recommendedSlateId) {
-      setSelectedSlate(json.recommendedSlateId);
-    }
-
-    if (!selectedContest && json?.contests?.length) {
-      const targetSlate = slateId || json.recommendedSlateId;
-      const recommendedContest = json.contests.find((c: any) => c.slate_id === targetSlate && ['open', 'live'].includes(String(c.status || '').toLowerCase()))
-        || json.contests.find((c: any) => c.slate_id === targetSlate)
-        || json.contests[0];
-      if (recommendedContest) setSelectedContest(recommendedContest.id);
-    }
+    const nextSlateId = slateId || json.contests?.find((c: any) => c.id === nextContestId)?.slate_id || json.recommendedSlateId || '';
+    if (nextSlateId && nextSlateId !== selectedSlate) setSelectedSlate(nextSlateId);
   }
 
   useEffect(() => { load(); }, []);
-  useEffect(() => { if (selectedSlate) load(selectedSlate); }, [selectedSlate]);
+  useEffect(() => {
+    if (!selectedContest) return;
+    const contest = data.contests.find((c: any) => c.id === selectedContest);
+    const contestSlate = contest?.slate_id;
+    load({ slateId: contestSlate || selectedSlate, contestId: selectedContest });
+  }, [selectedContest]);
 
   const currentContest = data.contests.find((c: any) => c.id === selectedContest);
+  const activeContests = useMemo(
+    () => (data.contests ?? []).filter((c: any) => ['open', 'live'].includes(String(c.status || '').toLowerCase())),
+    [data.contests],
+  );
 
   const slotByPlayerId = useMemo(() => {
     const map = new Map<string, SlotKey>();
-    for (const slot of slots) {
-      if (slot.player_id) map.set(slot.player_id, slot.slot);
-    }
+    for (const slot of slots) if (slot.player_id) map.set(slot.player_id, slot.slot);
     return map;
   }, [slots]);
 
@@ -83,13 +81,6 @@ export default function DfsClient() {
 
   const salaryRemaining = Number(currentContest?.salary_cap ?? 0) - salaryUsed;
 
-  const validationMessage = useMemo(() => {
-    if (!selectedContest) return 'Select a contest to build a lineup.';
-    if (salaryRemaining < 0) return `Over salary cap by $${Math.abs(Math.round(salaryRemaining))}.`;
-    if (slots.some((s) => !s.player_id)) return 'Fill all lineup slots before submitting.';
-    return 'Lineup is valid and ready to submit.';
-  }, [selectedContest, salaryRemaining, slots]);
-
   async function post(action: string, payload: any) {
     const res = await fetch('/api/dfs', {
       method: 'POST',
@@ -106,72 +97,12 @@ export default function DfsClient() {
       setMsg('');
       const json = await post('submit_entry', {
         contest_id: selectedContest,
-        lineup_name: lineupName,
         slots,
       });
       setMsg(`Entry submitted: ${json.entryId}`);
       setSlots(SLOT_CONFIG.map((slot) => ({ slot, player_id: '' })));
       setActiveSlot('CAPTAIN');
-      await load(selectedSlate || undefined);
-    } catch (e: any) {
-      setMsg(`Error: ${e.message}`);
-    }
-  }
-
-  async function createSlate() {
-    try {
-      setMsg('');
-      if (!seasonIdForCreate) throw new Error('Select a season first.');
-      const json = await post('create_slate', {
-        season_id: seasonIdForCreate,
-        name: newSlateName,
-        lock_at: newSlateLock || null,
-        game_ids: [],
-        status: 'draft',
-      });
-      setSelectedSlate(json.slate.id);
-      setMsg('Custom slate created with snapshotted pricing/projections.');
-      await load(json.slate.id);
-    } catch (e: any) {
-      setMsg(`Error: ${e.message}`);
-    }
-  }
-
-  async function createContest() {
-    try {
-      setMsg('');
-      await post('create_contest', {
-        slate_id: selectedSlate,
-        name: newContestName,
-        lock_at: newContestLock || null,
-        salary_cap: Number(newContestCap),
-        max_entries: Number(newContestMaxEntries),
-        status: 'open',
-      });
-      setMsg('Custom contest created.');
-      await load(selectedSlate || undefined);
-    } catch (e: any) {
-      setMsg(`Error: ${e.message}`);
-    }
-  }
-
-  async function generateDefaultSlate() {
-    try {
-      const json = await post('auto_generate_default_next_slate_day', {});
-      setSelectedSlate(json.slateId);
-      setMsg(`Default next slate day ready (${json.gameCount ?? 0} games).`);
-      await load(json.slateId);
-    } catch (e: any) {
-      setMsg(`Error: ${e.message}`);
-    }
-  }
-
-  async function scoreContest() {
-    if (!selectedContest) return;
-    try {
-      const json = await post('score_contest', { contest_id: selectedContest });
-      setMsg(`Contest scored. ${json.scoredEntries} entries updated.`);
-      await load(selectedSlate || undefined);
+      await load({ contestId: selectedContest, slateId: selectedSlate });
     } catch (e: any) {
       setMsg(`Error: ${e.message}`);
     }
@@ -184,71 +115,71 @@ export default function DfsClient() {
     return !isGoalie;
   }
 
-  function tryAddPlayerToSlot(player: any, slot: SlotKey, { quiet = false }: { quiet?: boolean } = {}) {
-    if (!slotAllowsPlayer(slot, player)) {
-      if (!quiet) setMsg(slot === 'GOALIE' ? 'Goalie slot only accepts goalies.' : 'Captain/Skater slots only accept skaters.');
-      return false;
-    }
-
-    const alreadyIn = slotByPlayerId.get(player.player_id);
-    if (alreadyIn === slot) {
-      if (!quiet) setMsg(`${player.player?.name ?? 'Player'} is already in ${slotLabel(slot)}.`);
-      return true;
-    }
-
-    let nextSlots = [...slots];
-    const slotIndex = nextSlots.findIndex((s) => s.slot === slot);
-    if (slotIndex < 0) return false;
-
-    if (alreadyIn) {
-      const existingInTarget = nextSlots[slotIndex].player_id;
-      nextSlots = nextSlots.map((s) => {
-        if (s.slot === alreadyIn) return { ...s, player_id: existingInTarget || '' };
-        if (s.slot === slot) return { ...s, player_id: player.player_id };
-        return s;
-      });
-      setSlots(nextSlots);
-      if (!quiet) setMsg(`Swapped ${player.player?.name ?? 'player'} from ${slotLabel(alreadyIn)} to ${slotLabel(slot)}.`);
-      return true;
-    }
-
-    const targetPlayerId = nextSlots[slotIndex].player_id;
-    nextSlots[slotIndex] = { ...nextSlots[slotIndex], player_id: player.player_id };
-    if (targetPlayerId) {
-      const firstOpenCompatible = nextSlots.find((s) => !s.player_id && slotAllowsPlayer(s.slot, { ...player, player: { ...player.player, position: data.slatePlayers.find((p: any) => p.player_id === targetPlayerId)?.player?.position } }));
-      if (firstOpenCompatible) {
-        firstOpenCompatible.player_id = targetPlayerId;
-      } else {
-        const displacedPlayer = data.slatePlayers.find((p: any) => p.player_id === targetPlayerId);
-        if (displacedPlayer) {
-          const fallbackSlot = nextSlots.find((s) => !s.player_id && slotAllowsPlayer(s.slot, displacedPlayer));
-          if (fallbackSlot) fallbackSlot.player_id = targetPlayerId;
-        }
-      }
-    }
-
-    setSlots(nextSlots);
-    return true;
-  }
-
   function addPlayerToLineup(player: any) {
     setMsg('');
-    const orderedTargets: SlotKey[] = [activeSlot, ...SLOT_CONFIG.filter((s) => s !== activeSlot)];
-    for (const slot of orderedTargets) {
-      if (slotAllowsPlayer(slot, player)) {
-        const success = tryAddPlayerToSlot(player, slot, { quiet: true });
-        if (success) {
-          setActiveSlot(slot);
-          return;
-        }
+    if (!slotAllowsPlayer(activeSlot, player)) {
+      const fallbackSlot = SLOT_CONFIG.find((slot) => !slots.find((s) => s.slot === slot)?.player_id && slotAllowsPlayer(slot, player));
+      if (!fallbackSlot) {
+        setMsg('No valid lineup slot is available for that player.');
+        return;
       }
+      setActiveSlot(fallbackSlot);
+      return addPlayerToLineupToSlot(player, fallbackSlot);
     }
-    setMsg('No valid lineup slot is available for that player.');
+    addPlayerToLineupToSlot(player, activeSlot);
+  }
+
+  function addPlayerToLineupToSlot(player: any, slot: SlotKey) {
+    const existingSlot = slotByPlayerId.get(player.player_id);
+    if (existingSlot === slot) return;
+
+    setSlots((prev) => {
+      const next = [...prev];
+      const targetIdx = next.findIndex((s) => s.slot === slot);
+      if (targetIdx < 0) return prev;
+
+      if (existingSlot) {
+        const existingIdx = next.findIndex((s) => s.slot === existingSlot);
+        const targetPlayer = next[targetIdx].player_id;
+        next[targetIdx] = { ...next[targetIdx], player_id: player.player_id };
+        next[existingIdx] = { ...next[existingIdx], player_id: targetPlayer || '' };
+        return next;
+      }
+
+      next[targetIdx] = { ...next[targetIdx], player_id: player.player_id };
+      return next;
+    });
   }
 
   function removePlayerFromSlot(slot: SlotKey) {
     setSlots((prev) => prev.map((s) => (s.slot === slot ? { ...s, player_id: '' } : s)));
     setMsg('');
+  }
+
+  function onDragStart(e: any, slot: SlotKey) {
+    e.dataTransfer.setData('text/plain', slot);
+  }
+
+  function onDropSlot(e: any, targetSlot: SlotKey) {
+    e.preventDefault();
+    const sourceSlot = e.dataTransfer.getData('text/plain') as SlotKey;
+    if (!sourceSlot || sourceSlot === targetSlot) return;
+
+    const sourcePlayerId = slots.find((s) => s.slot === sourceSlot)?.player_id || '';
+    const targetPlayerId = slots.find((s) => s.slot === targetSlot)?.player_id || '';
+    const sourcePlayer = data.slatePlayers.find((p: any) => p.player_id === sourcePlayerId);
+    const targetPlayer = data.slatePlayers.find((p: any) => p.player_id === targetPlayerId);
+
+    if ((sourcePlayerId && sourcePlayer && !slotAllowsPlayer(targetSlot, sourcePlayer)) || (targetPlayerId && targetPlayer && !slotAllowsPlayer(sourceSlot, targetPlayer))) {
+      setMsg('That swap is invalid for slot positions.');
+      return;
+    }
+
+    setSlots((prev) => prev.map((row) => {
+      if (row.slot === sourceSlot) return { ...row, player_id: targetPlayerId };
+      if (row.slot === targetSlot) return { ...row, player_id: sourcePlayerId };
+      return row;
+    }));
   }
 
   async function openPlayerResearch(player: any) {
@@ -309,198 +240,192 @@ export default function DfsClient() {
   }
 
   function changeSort(newKey: SortKey) {
-    if (newKey === sortKey) {
-      setSortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'));
-      return;
+    if (newKey === sortKey) setSortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    else {
+      setSortKey(newKey);
+      setSortDir(newKey === 'name' || newKey === 'team' || newKey === 'position' ? 'asc' : 'desc');
     }
-    setSortKey(newKey);
-    setSortDir(newKey === 'name' || newKey === 'team' || newKey === 'position' ? 'asc' : 'desc');
   }
-
-  const isAdmin = data.actor?.role === 'ADMIN';
 
   return (
     <main>
       <h1>DFS</h1>
-      <p className="muted">Build one lineup with 1 Captain, 4 Skaters, and 1 Goalie. Captain gets 1.5x salary and scoring.</p>
-      {msg && <p>{msg}</p>}
-
-      {isAdmin && (
-        <section className="card" style={{ marginBottom: 12 }}>
-          <h2 className="section-title">Admin DFS Controls</h2>
-          <div className="form-actions" style={{ marginTop: 0 }}>
-            <button onClick={generateDefaultSlate}>Generate Next Playable Default Slate</button>
-            <button onClick={scoreContest} disabled={!selectedContest}>Score Selected Contest</button>
-          </div>
-
-          <div className="form-grid">
-            <div className="form-field col-4"><label>Season</label><select value={seasonIdForCreate} onChange={(e) => setSeasonIdForCreate(e.target.value)}><option value="">Select season...</option>{(data.seasons ?? []).map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
-            <div className="form-field col-4"><label>Slate Name</label><input value={newSlateName} onChange={(e) => setNewSlateName(e.target.value)} /></div>
-            <div className="form-field col-4"><label>Slate Lock (optional)</label><input type="datetime-local" value={newSlateLock} onChange={(e) => setNewSlateLock(e.target.value)} /></div>
-            <div className="form-actions"><button onClick={createSlate}>Create Custom Slate</button></div>
-          </div>
-
-          <div className="form-grid" style={{ marginTop: 12 }}>
-            <div className="form-field col-6"><label>Contest Name</label><input value={newContestName} onChange={(e) => setNewContestName(e.target.value)} /></div>
-            <div className="form-field col-6"><label>Contest Lock (optional)</label><input type="datetime-local" value={newContestLock} onChange={(e) => setNewContestLock(e.target.value)} /></div>
-            <div className="form-field col-6"><label>Salary Cap</label><input value={newContestCap} onChange={(e) => setNewContestCap(e.target.value)} /></div>
-            <div className="form-field col-6"><label>Max Entries / User</label><input value={newContestMaxEntries} onChange={(e) => setNewContestMaxEntries(e.target.value)} /></div>
-            <div className="form-actions"><button onClick={createContest} disabled={!selectedSlate}>Create Custom Contest</button></div>
-          </div>
-        </section>
-      )}
 
       <section className="card" style={{ marginBottom: 12 }}>
-        <h2 className="section-title">Slates & Contests</h2>
-        <div className="form-grid">
-          <div className="form-field col-6">
-            <label>Active Slates</label>
-            <select value={selectedSlate} onChange={(e) => setSelectedSlate(e.target.value)}>
-              <option value="">Select slate...</option>
-              {data.slates.map((s: any) => <option key={s.id} value={s.id}>{s.name} · {s.status}{s.is_default_weekly ? ' · default' : ''}</option>)}
-            </select>
-          </div>
-          <div className="form-field col-6">
-            <label>Contests</label>
+        <h2 className="section-title">Active DFS Contests</h2>
+        <p className="muted">Choose a contest first. Your lineup, leaderboard, and slate games update automatically.</p>
+        <div className="form-grid" style={{ marginTop: 8 }}>
+          <div className="form-field col-8">
+            <label>Contest</label>
             <select value={selectedContest} onChange={(e) => setSelectedContest(e.target.value)}>
               <option value="">Select contest...</option>
-              {data.contests.filter((c: any) => !selectedSlate || c.slate_id === selectedSlate).map((c: any) => (
-                <option key={c.id} value={c.id}>{c.name} · {c.status} · Cap {c.salary_cap}{c.is_default_weekly ? ' · default' : ''}</option>
-              ))}
+              {activeContests.map((c: any) => <option key={c.id} value={c.id}>{c.name} · {c.status} · Cap {c.salary_cap}</option>)}
+              {!activeContests.length && (data.contests ?? []).map((c: any) => <option key={c.id} value={c.id}>{c.name} · {c.status}</option>)}
             </select>
+          </div>
+          <div className="form-field col-4">
+            <label>Selected Slate</label>
+            <div>{data.slates.find((s: any) => s.id === selectedSlate)?.name ?? '—'}</div>
           </div>
         </div>
       </section>
 
       <section className="card" style={{ marginBottom: 12 }}>
-        <h2 className="section-title">Current Slate Games</h2>
+        <h2 className="section-title">How Scoring Works</h2>
+        <p className="muted">Roster: 1 Captain, 4 Skaters, 1 Goalie. Captain receives 1.5x salary and 1.5x fantasy scoring.</p>
+        <p className="muted">Skaters: Goal = 3, Assist = 2, +5 bonus at 5 weekly real points, +5 additional at 10 weekly real points. Goalies: Win = 8, Goal Against = -1.</p>
+      </section>
+
+      <div className="tabs" style={{ marginBottom: 12, justifyContent: 'flex-start' }}>
+        <button className={`tab-link ${activeTab === 'leaderboard' ? 'is-active' : ''}`} onClick={() => setActiveTab('leaderboard')}>Leaderboard</button>
+        <button className={`tab-link ${activeTab === 'submit' ? 'is-active' : ''}`} onClick={() => setActiveTab('submit')}>Submit Entries</button>
+      </div>
+
+      {msg && <p>{msg}</p>}
+
+      {activeTab === 'leaderboard' && (
+        <section className="card" style={{ marginBottom: 12 }}>
+          <h2 className="section-title">Leaderboard</h2>
+          <table className="table">
+            <thead><tr><th>Rank</th><th>Entry</th><th>User</th><th>Projected</th><th>Actual</th><th>Submitted</th></tr></thead>
+            <tbody>
+              {(data.leaderboardEntries ?? []).map((e: any, idx: number) => (
+                <tr key={e.id}>
+                  <td>{e.rank ?? (idx + 1)}</td>
+                  <td>{e.lineup_name || `Entry #${idx + 1}`}</td>
+                  <td>{e.user_display}</td>
+                  <td>{Number(e.projected_points ?? 0).toFixed(2)}</td>
+                  <td>{Number(e.actual_points ?? 0).toFixed(2)}</td>
+                  <td>{new Date(e.created_at).toLocaleString()}</td>
+                </tr>
+              ))}
+              {!data.leaderboardEntries?.length && <tr><td colSpan={6} className="muted">No entries submitted for this contest yet.</td></tr>}
+            </tbody>
+          </table>
+        </section>
+      )}
+
+      {activeTab === 'submit' && (
+        <>
+          <div className="dfs-workspace">
+            <section className="card dfs-panel">
+              <div className="dfs-panel-header">
+                <h2 className="section-title">Player Pool</h2>
+                <div className="dfs-pool-controls">
+                  <input placeholder="Search player or team" value={search} onChange={(e) => setSearch(e.target.value)} />
+                  <select value={positionFilter} onChange={(e) => setPositionFilter(e.target.value as any)}>
+                    <option value="ALL">All</option>
+                    <option value="SKATERS">Skaters</option>
+                    <option value="GOALIES">Goalies</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="dfs-scroll-table">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th><button type="button" className="link-button" onClick={() => changeSort('name')}>Player</button></th>
+                      <th><button type="button" className="link-button" onClick={() => changeSort('team')}>Team</button></th>
+                      <th><button type="button" className="link-button" onClick={() => changeSort('position')}>Pos</button></th>
+                      <th><button type="button" className="link-button" onClick={() => changeSort('salary')}>Salary</button></th>
+                      <th><button type="button" className="link-button" onClick={() => changeSort('projection')}>Proj</button></th>
+                      <th><button type="button" className="link-button" onClick={() => changeSort('goals')}>G</button></th>
+                      <th><button type="button" className="link-button" onClick={() => changeSort('assists')}>A</button></th>
+                      <th><button type="button" className="link-button" onClick={() => changeSort('points')}>P</button></th>
+                      <th>Add</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visiblePlayers.map((p: any) => {
+                      const occupiedSlot = slotByPlayerId.get(p.player_id);
+                      const invalidForSelectedSlot = !slotAllowsPlayer(activeSlot, p);
+                      return (
+                        <tr key={p.id} className={invalidForSelectedSlot ? 'dfs-row-muted' : ''}>
+                          <td>
+                            <button type="button" className="link-button" onClick={() => openPlayerResearch(p)}>{p.player?.name || p.player_id.slice(0, 8)}</button>
+                            {occupiedSlot && <span className="badge" style={{ marginLeft: 6 }}>In {slotLabel(occupiedSlot)}</span>}
+                          </td>
+                          <td>{p.player?.team_name || '-'}</td>
+                          <td>{p.player?.position || p.position || '-'}</td>
+                          <td>${p.salary}</td>
+                          <td>{Number(p.projection_points || 0).toFixed(2)}</td>
+                          <td>{p.stats?.goals ?? 0}</td>
+                          <td>{p.stats?.assists ?? 0}</td>
+                          <td>{p.stats?.points ?? 0}</td>
+                          <td><button type="button" onClick={() => addPlayerToLineup(p)}>Add</button></td>
+                        </tr>
+                      );
+                    })}
+                    {!visiblePlayers.length && <tr><td colSpan={9} className="muted">No players match the current filters.</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section className="card dfs-panel">
+              <h2 className="section-title">Lineup Builder</h2>
+              <div className="dfs-lineup-stack">
+                {slots.map((s) => {
+                  const player = data.slatePlayers.find((p: any) => p.player_id === s.player_id);
+                  const isActive = s.slot === activeSlot;
+                  return (
+                    <div
+                      key={s.slot}
+                      className={`dfs-slot ${isActive ? 'is-active' : ''} ${s.slot === 'CAPTAIN' ? 'is-captain' : ''} ${s.slot === 'GOALIE' ? 'is-goalie' : ''}`}
+                      role="button"
+                      tabIndex={0}
+                      draggable={Boolean(player)}
+                      onDragStart={(e) => onDragStart(e, s.slot)}
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={(e) => onDropSlot(e, s.slot)}
+                      onClick={() => setActiveSlot(s.slot)}
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setActiveSlot(s.slot); } }}
+                    >
+                      <div>
+                        <div className="dfs-slot-label">{slotLabel(s.slot)}</div>
+                        <div className="dfs-slot-player">{player ? player.player?.name : 'Select this slot, then add a player'}</div>
+                        {player && <div className="muted">{player.player?.team_name} · {player.player?.position} · ${player.salary}</div>}
+                      </div>
+                      <div className="dfs-slot-actions">
+                        {player && <button type="button" aria-label={`Remove ${player.player?.name ?? 'player'} from ${slotLabel(s.slot)}`} onClick={(e) => { e.stopPropagation(); removePlayerFromSlot(s.slot); }}>✕</button>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <p className="muted">Active slot: <strong>{slotLabel(activeSlot)}</strong></p>
+              <p className="muted">Salary used: {Math.round(salaryUsed)} / {currentContest?.salary_cap ?? '—'} · Remaining: {isNaN(salaryRemaining) ? '—' : Math.round(salaryRemaining)}</p>
+              <p className="muted">Projected total: {projectedTotal.toFixed(2)}</p>
+              <button type="button" onClick={submit} disabled={!selectedContest || salaryRemaining < 0}>Submit Entry</button>
+            </section>
+          </div>
+
+          <section className="card" style={{ marginBottom: 12 }}>
+            <h2 className="section-title">My Entries</h2>
+            <table className="table">
+              <thead><tr><th>Entry</th><th>Contest</th><th>Salary</th><th>Projected</th><th>Actual</th><th>Submitted</th></tr></thead>
+              <tbody>
+                {(data.myEntries ?? []).map((e: any, idx: number) => (
+                  <tr key={e.id}><td>{e.lineup_name || `Entry #${idx + 1}`}</td><td>{e.contest_name || e.contest_id}</td><td>{e.salary_used}</td><td>{e.projected_points}</td><td>{e.actual_points}</td><td>{new Date(e.created_at).toLocaleString()}</td></tr>
+                ))}
+                {!data.myEntries?.length && <tr><td colSpan={6} className="muted">No entries yet. Pick a contest and submit your lineup.</td></tr>}
+              </tbody>
+            </table>
+          </section>
+        </>
+      )}
+
+      <section className="card">
+        <h2 className="section-title">Games in This Slate</h2>
         <table className="table">
           <thead><tr><th>Time</th><th>Matchup</th><th>Status</th></tr></thead>
           <tbody>
             {(data.slateGames ?? []).map((g: any) => (
-              <tr key={g.id}>
-                <td>{new Date(g.scheduled_at).toLocaleString()}</td>
-                <td>{g.home_team_name} vs {g.away_team_name}</td>
-                <td>{g.status}</td>
-              </tr>
+              <tr key={g.id}><td>{new Date(g.scheduled_at).toLocaleString()}</td><td>{g.home_team_name} vs {g.away_team_name}</td><td>{g.status}</td></tr>
             ))}
             {!data.slateGames?.length && <tr><td colSpan={3} className="muted">No games attached to this slate yet.</td></tr>}
-          </tbody>
-        </table>
-      </section>
-
-      <div className="dfs-workspace">
-        <section className="card dfs-panel">
-          <div className="dfs-panel-header">
-            <h2 className="section-title">Player Pool</h2>
-            <div className="dfs-pool-controls">
-              <input placeholder="Search player or team" value={search} onChange={(e) => setSearch(e.target.value)} />
-              <select value={positionFilter} onChange={(e) => setPositionFilter(e.target.value as any)}>
-                <option value="ALL">All</option>
-                <option value="SKATERS">Skaters</option>
-                <option value="GOALIES">Goalies</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="dfs-scroll-table">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th><button type="button" className="link-button" onClick={() => changeSort('name')}>Player</button></th>
-                  <th><button type="button" className="link-button" onClick={() => changeSort('team')}>Team</button></th>
-                  <th><button type="button" className="link-button" onClick={() => changeSort('position')}>Pos</button></th>
-                  <th><button type="button" className="link-button" onClick={() => changeSort('salary')}>Salary</button></th>
-                  <th><button type="button" className="link-button" onClick={() => changeSort('projection')}>Proj</button></th>
-                  <th><button type="button" className="link-button" onClick={() => changeSort('goals')}>G</button></th>
-                  <th><button type="button" className="link-button" onClick={() => changeSort('assists')}>A</button></th>
-                  <th><button type="button" className="link-button" onClick={() => changeSort('points')}>P</button></th>
-                  <th>Add</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visiblePlayers.map((p: any) => {
-                  const occupiedSlot = slotByPlayerId.get(p.player_id);
-                  const invalidForSelectedSlot = !slotAllowsPlayer(activeSlot, p);
-                  const captainPremium = activeSlot === 'CAPTAIN' ? Number(p.salary || 0) * 1.5 : Number(p.salary || 0);
-                  const wouldExceedCap = Number(currentContest?.salary_cap ?? 0) > 0 && (salaryUsed - (occupiedSlot ? Number(p.salary || 0) : 0) + captainPremium) > Number(currentContest?.salary_cap ?? 0);
-                  const muted = invalidForSelectedSlot || wouldExceedCap;
-
-                  return (
-                    <tr key={p.id} className={muted ? 'dfs-row-muted' : ''}>
-                      <td>
-                        <button type="button" className="link-button" onClick={() => openPlayerResearch(p)}>
-                          {p.player?.name || p.player_id.slice(0, 8)}
-                        </button>
-                        {occupiedSlot && <span className="badge" style={{ marginLeft: 6 }}>In {slotLabel(occupiedSlot)}</span>}
-                      </td>
-                      <td>{p.player?.team_name || '-'}</td>
-                      <td>{p.player?.position || p.position || '-'}</td>
-                      <td>${p.salary}</td>
-                      <td>{Number(p.projection_points || 0).toFixed(2)}</td>
-                      <td>{p.stats?.goals ?? 0}</td>
-                      <td>{p.stats?.assists ?? 0}</td>
-                      <td>{p.stats?.points ?? 0}</td>
-                      <td><button type="button" onClick={() => addPlayerToLineup(p)}>Add</button></td>
-                    </tr>
-                  );
-                })}
-                {!visiblePlayers.length && <tr><td colSpan={9} className="muted">No players match the current filters.</td></tr>}
-              </tbody>
-            </table>
-          </div>
-        </section>
-
-        <section className="card dfs-panel">
-          <h2 className="section-title">Lineup Builder</h2>
-          <div className="form-field" style={{ marginBottom: 10 }}>
-            <label>Lineup Name</label>
-            <input value={lineupName} onChange={(e) => setLineupName(e.target.value)} />
-          </div>
-
-          <div className="dfs-lineup-stack">
-            {slots.map((s) => {
-              const player = data.slatePlayers.find((p: any) => p.player_id === s.player_id);
-              const isActive = s.slot === activeSlot;
-              return (
-                <div
-                  key={s.slot}
-                  className={`dfs-slot ${isActive ? 'is-active' : ''} ${s.slot === 'CAPTAIN' ? 'is-captain' : ''} ${s.slot === 'GOALIE' ? 'is-goalie' : ''}`}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => setActiveSlot(s.slot)}
-                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setActiveSlot(s.slot); } }}
-                >
-                  <div>
-                    <div className="dfs-slot-label">{slotLabel(s.slot)}</div>
-                    <div className="dfs-slot-player">{player ? player.player?.name : 'Select this slot, then add a player'}</div>
-                    {player && <div className="muted">{player.player?.team_name} · {player.player?.position} · ${player.salary}</div>}
-                  </div>
-                  <div className="dfs-slot-actions">
-                    {player && <button type="button" onClick={(e) => { e.stopPropagation(); removePlayerFromSlot(s.slot); }}>Remove</button>}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          <p className="muted">Active slot: <strong>{slotLabel(activeSlot)}</strong></p>
-          <p className="muted">Salary used: {Math.round(salaryUsed)} / {currentContest?.salary_cap ?? '—'} · Remaining: {isNaN(salaryRemaining) ? '—' : Math.round(salaryRemaining)}</p>
-          <p className="muted">Projected total: {projectedTotal.toFixed(2)}</p>
-          <p className="muted">{validationMessage}</p>
-          <button type="button" onClick={submit} disabled={!selectedContest || salaryRemaining < 0}>Submit Entry</button>
-        </section>
-      </div>
-
-      <section className="card">
-        <h2 className="section-title">My Entries</h2>
-        <table className="table">
-          <thead><tr><th>Lineup</th><th>Contest</th><th>Salary</th><th>Projected</th><th>Actual</th><th>Submitted</th></tr></thead>
-          <tbody>
-            {(data.myEntries ?? []).map((e: any) => (
-              <tr key={e.id}><td>{e.lineup_name || e.id.slice(0, 8)}</td><td>{e.contest_name || e.contest_id}</td><td>{e.salary_used}</td><td>{e.projected_points}</td><td>{e.actual_points}</td><td>{new Date(e.created_at).toLocaleString()}</td></tr>
-            ))}
-            {!data.myEntries?.length && <tr><td colSpan={6} className="muted">No entries yet. Pick a contest and submit your lineup.</td></tr>}
           </tbody>
         </table>
       </section>

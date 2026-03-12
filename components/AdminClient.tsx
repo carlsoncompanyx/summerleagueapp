@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { parseCsv } from '../lib/csv/parse';
 
 type Role = 'FAN' | 'PLAYER' | 'CAPTAIN' | 'ADMIN';
-type Tab = 'dashboard' | 'seasons' | 'teams' | 'players' | 'registrations' | 'games' | 'scores' | 'trades';
+type Tab = 'dashboard' | 'seasons' | 'teams' | 'players' | 'registrations' | 'games' | 'scores' | 'trades' | 'dfs';
 
 type Season = {
   id: string;
@@ -35,6 +35,8 @@ type DashboardResponse = {
   trades: Trade[];
 };
 
+type DfsSlate = { id: string; name: string; status: string; season_id: string | null };
+
 const TABS: { key: Tab; label: string }[] = [
   { key: 'dashboard', label: 'Dashboard' },
   { key: 'seasons', label: 'Seasons' },
@@ -43,6 +45,7 @@ const TABS: { key: Tab; label: string }[] = [
   { key: 'games', label: 'Games & Schedule' },
   { key: 'scores', label: 'Scores' },
   { key: 'trades', label: 'Trades' },
+  { key: 'dfs', label: 'DFS' },
 ];
 
 
@@ -85,6 +88,15 @@ export default function AdminClient() {
   const [teamForm, setTeamForm] = useState({ id: '', season_id: '', name: '', captain_user_id: '', logo_url: '' });
   const [playerForm, setPlayerForm] = useState({ id: '', season_id: '', team_id: '', user_id: '', name: '', jersey: '', position: '' });
   const [gameForm, setGameForm] = useState({ id: '', season_id: '', home_team: '', away_team: '', scheduled_at: '', location: '', status: 'SCHEDULED' });
+  const [dfsSlateSeasonId, setDfsSlateSeasonId] = useState('');
+  const [dfsSlateName, setDfsSlateName] = useState('Custom Slate');
+  const [dfsSlateLock, setDfsSlateLock] = useState('');
+  const [dfsContestSlateId, setDfsContestSlateId] = useState('');
+  const [dfsContestName, setDfsContestName] = useState('Main Contest');
+  const [dfsContestLock, setDfsContestLock] = useState('');
+  const [dfsContestCap, setDfsContestCap] = useState('50000');
+  const [dfsContestMaxEntries, setDfsContestMaxEntries] = useState('5');
+  const [dfsSlates, setDfsSlates] = useState<DfsSlate[]>([]);
 
   const [assignRegId, setAssignRegId] = useState<string | null>(null);
   const [assignForm, setAssignForm] = useState({ team_id: '', name: '', jersey: '', position: '' });
@@ -157,6 +169,14 @@ export default function AdminClient() {
   };
 
   useEffect(() => { load(); }, []);
+
+  useEffect(() => {
+    if (activeTab !== 'dfs') return;
+    fetch('/api/dfs')
+      .then((r) => r.json())
+      .then((j) => setDfsSlates(j?.slates ?? []))
+      .catch(() => setDfsSlates([]));
+  }, [activeTab]);
 
   const runAction = async (action: string, payload?: any) => {
     setBusy(true);
@@ -349,6 +369,72 @@ export default function AdminClient() {
           <h2 className="section-title">Trades (Approval Queue)</h2>
           <p className="muted">Trade proposals are created on the Trades screen by captains. Admin reviews here.</p>
           <table className="table"><thead><tr><th>Season</th><th>Team A → Team B</th><th>Team B → Team A</th><th>Status</th><th>Actions</th></tr></thead><tbody>{filteredTrades.map((t) => <tr key={t.id}><td>{seasons.find((s) => s.id === t.season_id)?.name}</td><td>{(t.players_out ?? []).map((id) => players.find((p) => p.id === id)?.name ?? id).join(', ')}</td><td>{(t.players_in ?? []).map((id) => players.find((p) => p.id === id)?.name ?? id).join(', ')}</td><td>{t.status}</td><td><button disabled={!canAdmin} onClick={() => saveAndReload('trade_approve', { tradeId: t.id })}>Approve</button> <button disabled={!canAdmin} onClick={() => saveAndReload('trade_reject', { tradeId: t.id })}>Reject</button></td></tr>)}</tbody></table>
+        </section>
+      )}
+
+      {activeTab === 'dfs' && (
+        <section className="card">
+          <h2 className="section-title">DFS Admin Controls</h2>
+          <p className="muted">Manage default slate generation and custom slate/contest setup from admin only.</p>
+          <div className="form-actions">
+            <button disabled={busy} onClick={async () => {
+              setBusy(true);
+              setError(null);
+              try {
+                const res = await fetch('/api/dfs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'auto_generate_default_next_slate_day', payload: {} }) });
+                const json = await res.json();
+                if (!res.ok) throw new Error(json?.error || 'Failed to generate default slate');
+                setSuccess(`Default slate generated: ${json.slateId}`);
+              } catch (e: any) {
+                setError(e?.message || 'Failed to generate default slate');
+              } finally {
+                setBusy(false);
+              }
+            }}>Generate Next Playable Default Slate</button>
+          </div>
+
+          <div className="form-grid" style={{ marginTop: 8 }}>
+            <div className="form-field col-3"><label>Season</label><select value={dfsSlateSeasonId} onChange={(e) => setDfsSlateSeasonId(e.target.value)}><option value="">Select season...</option>{seasons.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
+            <div className="form-field col-3"><label>Slate Name</label><input value={dfsSlateName} onChange={(e) => setDfsSlateName(e.target.value)} /></div>
+            <div className="form-field col-3"><label>Slate Lock</label><input type="datetime-local" value={dfsSlateLock} onChange={(e) => setDfsSlateLock(e.target.value)} /></div>
+            <div className="form-actions"><button disabled={busy || !dfsSlateSeasonId} onClick={async () => {
+              setBusy(true);
+              setError(null);
+              try {
+                const res = await fetch('/api/dfs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'create_slate', payload: { season_id: dfsSlateSeasonId, name: dfsSlateName, lock_at: fromLocalDateTimeInput(dfsSlateLock), game_ids: [], status: 'draft' } }) });
+                const json = await res.json();
+                if (!res.ok) throw new Error(json?.error || 'Failed to create slate');
+                setSuccess('Custom slate created.');
+                setDfsContestSlateId(json?.slate?.id || '');
+              } catch (e: any) {
+                setError(e?.message || 'Failed to create slate');
+              } finally {
+                setBusy(false);
+              }
+            }}>Create Custom Slate</button></div>
+          </div>
+
+          <div className="form-grid" style={{ marginTop: 8 }}>
+            <div className="form-field col-3"><label>Slate</label><select value={dfsContestSlateId} onChange={(e) => setDfsContestSlateId(e.target.value)}><option value="">Select slate...</option>{dfsSlates.map((s) => <option key={s.id} value={s.id}>{s.name} · {s.status}</option>)}</select></div>
+            <div className="form-field col-3"><label>Contest Name</label><input value={dfsContestName} onChange={(e) => setDfsContestName(e.target.value)} /></div>
+            <div className="form-field col-3"><label>Contest Lock</label><input type="datetime-local" value={dfsContestLock} onChange={(e) => setDfsContestLock(e.target.value)} /></div>
+            <div className="form-field col-3"><label>Salary Cap</label><input value={dfsContestCap} onChange={(e) => setDfsContestCap(e.target.value)} /></div>
+            <div className="form-field col-3"><label>Max Entries</label><input value={dfsContestMaxEntries} onChange={(e) => setDfsContestMaxEntries(e.target.value)} /></div>
+            <div className="form-actions"><button disabled={busy || !dfsContestSlateId} onClick={async () => {
+              setBusy(true);
+              setError(null);
+              try {
+                const res = await fetch('/api/dfs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'create_contest', payload: { slate_id: dfsContestSlateId, name: dfsContestName, lock_at: fromLocalDateTimeInput(dfsContestLock), salary_cap: Number(dfsContestCap), max_entries: Number(dfsContestMaxEntries), status: 'open' } }) });
+                const json = await res.json();
+                if (!res.ok) throw new Error(json?.error || 'Failed to create contest');
+                setSuccess('Custom contest created.');
+              } catch (e: any) {
+                setError(e?.message || 'Failed to create contest');
+              } finally {
+                setBusy(false);
+              }
+            }}>Create Contest</button></div>
+          </div>
         </section>
       )}
 

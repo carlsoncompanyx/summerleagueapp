@@ -50,13 +50,13 @@ function getBestHistoricalRows(player: any, historicalRows: any[]) {
   if (byPlayerId.length) return { rows: byPlayerId, confidence: 'id_match' };
 
   const normalized = normalizePlayerName(player.name);
-  const exact = historicalRows.filter((r) => r.normalized_player_name === normalized);
+  const exact = historicalRows.filter((r) => normalizePlayerName(r.player_name_raw) === normalized || r.normalized_player_name === normalized);
   if (exact.length) return { rows: exact, confidence: 'normalized_exact' };
 
   let bestName = '';
   let bestDistance = Number.POSITIVE_INFINITY;
   for (const row of historicalRows) {
-    const candidate = row.normalized_player_name;
+    const candidate = normalizePlayerName(row.player_name_raw || row.normalized_player_name);
     if (!candidate) continue;
     const distance = levenshtein(normalized, candidate);
     const maxLen = Math.max(candidate.length, normalized.length) || 1;
@@ -69,7 +69,7 @@ function getBestHistoricalRows(player: any, historicalRows: any[]) {
 
   if (bestName) {
     return {
-      rows: historicalRows.filter((r) => r.normalized_player_name === bestName),
+      rows: historicalRows.filter((r) => normalizePlayerName(r.player_name_raw || r.normalized_player_name) === bestName),
       confidence: 'normalized_fuzzy',
     };
   }
@@ -124,6 +124,13 @@ export async function buildSlateValuations({
   const overrideByPlayer = new Map(overrides.map((o: any) => [o.player_id, o]));
   const valuationInputByPlayer = new Map(valuationInputs.map((v: any) => [v.player_id, v]));
 
+  const seasonSampleAverages = (seasonStats ?? [])
+    .map((s: any) => Number(s.fantasy_points_avg ?? 0))
+    .filter((n: number) => Number.isFinite(n) && n > 0);
+  const leagueAverageFallback = seasonSampleAverages.length
+    ? Number((seasonSampleAverages.reduce((sum: number, n: number) => sum + n, 0) / seasonSampleAverages.length).toFixed(2))
+    : null;
+
   return players.map((p: any) => {
     const seasonStat = seasonByPlayer.get(p.id);
     const override = overrideByPlayer.get(p.id);
@@ -151,11 +158,13 @@ export async function buildSlateValuations({
     // Historical totals are season summaries; convert to a conservative per-game baseline for DFS projections.
     const historicalProjection = historicalAvgPoints != null ? Math.max(3, historicalAvgPoints / 9.5) : null;
     const fallback = Number(valInput?.fallback_position_baseline ?? fallbackByPosition(p.position));
+    const leagueAverage = leagueAverageFallback != null ? Number(leagueAverageFallback) : null;
 
     const projection = Number(
       override?.projection_points
       ?? currentProjection
       ?? historicalProjection
+      ?? leagueAverage
       ?? fallback,
     );
 
@@ -202,13 +211,16 @@ export async function getFantasyPlayerDetails(playerId: string, seasonId?: strin
     : 0;
 
   const sampleGames = Number(current.data?.games_played ?? 0);
+  const hasLeagueAverage = current.data?.season_id != null;
   const pricingContext = seasonOverride.data?.projection_points != null
     ? { source: 'manual_override', sourceLabel: 'Manual pricing override used for this slate season.' }
     : sampleGames >= 2
       ? { source: 'current_sample', sourceLabel: 'Current-season sample is driving projection.' }
       : matchedRows.length
         ? { source: 'historical_fallback', sourceLabel: 'Historical season stats are being used as fallback context.' }
-        : { source: 'position_fallback', sourceLabel: 'Position baseline fallback is being used (limited sample data).' };
+        : hasLeagueAverage
+          ? { source: 'league_average_fallback', sourceLabel: 'League-average fallback is being used (no reliable current or historical sample).' }
+          : { source: 'position_fallback', sourceLabel: 'Position baseline fallback is being used (limited sample data).' };
 
   return {
     player,

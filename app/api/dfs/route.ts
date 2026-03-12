@@ -47,6 +47,7 @@ async function getSlateLockAt(admin: any, slateId: string, fallbackLockAt?: stri
 
 export async function GET(req: NextRequest) {
   const slateId = req.nextUrl.searchParams.get('slate_id');
+  const contestId = req.nextUrl.searchParams.get('contest_id');
   const playerId = req.nextUrl.searchParams.get('player_id');
   const seasonId = req.nextUrl.searchParams.get('season_id') || undefined;
   const actor = await getCurrentActor();
@@ -101,6 +102,26 @@ export async function GET(req: NextRequest) {
     ? await admin.from('contest_entries').select('id,contest_id,user_id,lineup_name,projected_points,actual_points,salary_used,created_at,contests(name)').eq('user_id', actor.userId).order('created_at', { ascending: false })
     : { data: [] as any[] };
 
+  const selectedContestId = contestId || null;
+  const leaderboardQ = selectedContestId
+    ? await admin
+      .from('contest_entries')
+      .select('id,contest_id,user_id,lineup_name,projected_points,actual_points,salary_used,created_at')
+      .eq('contest_id', selectedContestId)
+      .order('actual_points', { ascending: false })
+      .order('projected_points', { ascending: false })
+      .order('created_at', { ascending: true })
+    : { data: [] as any[] };
+
+  const leaderboardUserIds = Array.from(new Set((leaderboardQ.data ?? []).map((e: any) => e.user_id).filter(Boolean)));
+  const { data: leaderboardProfiles } = leaderboardUserIds.length
+    ? await admin.from('profiles').select('user_id,display_name,first_name,last_name').in('user_id', leaderboardUserIds)
+    : { data: [] as any[] };
+  const profileByUser = new Map((leaderboardProfiles ?? []).map((p: any) => {
+    const full = `${p.first_name ?? ''} ${p.last_name ?? ''}`.trim();
+    return [p.user_id, p.display_name || full || 'User'];
+  }));
+
   const now = Date.now();
   const orderedSlates = (slates.data ?? []).slice().sort((a: any, b: any) => new Date(a.lock_at ?? 0).getTime() - new Date(b.lock_at ?? 0).getTime());
   const recommendedSlate = orderedSlates.find((s: any) => new Date(s.lock_at ?? 0).getTime() > now) ?? orderedSlates[0] ?? null;
@@ -134,6 +155,11 @@ export async function GET(req: NextRequest) {
     myEntries: (entriesQ.data ?? []).map((e: any) => ({
       ...e,
       contest_name: e.contests?.name ?? null,
+    })),
+    leaderboardEntries: (leaderboardQ.data ?? []).map((e: any, idx: number) => ({
+      ...e,
+      rank: idx + 1,
+      user_display: profileByUser.get(e.user_id) ?? 'User',
     })),
   });
 }

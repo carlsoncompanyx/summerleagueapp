@@ -222,6 +222,19 @@ button {
   border-radius: 10px;
   padding: 9px 12px;
   font-weight: 700;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+a,
+select,
+summary,
+[role='button'] {
+  cursor: pointer;
 }
 
 @media (min-width: 1024px) {
