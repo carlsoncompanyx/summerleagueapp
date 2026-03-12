@@ -141,6 +141,14 @@ export async function GET(req: NextRequest) {
   const recommendedSlate = orderedSlates.find((s: any) => new Date(s.lock_at ?? 0).getTime() > now) ?? orderedSlates[0] ?? null;
 
   const selectedSlateId = slateId || recommendedSlate?.id || null;
+
+  const valuationInputsQ = seasonId
+    ? await admin.from('player_valuation_inputs').select('*').eq('season_id', seasonId)
+    : { data: [] as any[] };
+  const projectionOverridesQ = seasonId
+    ? await admin.from('player_projection_overrides').select('*').eq('season_id', seasonId)
+    : { data: [] as any[] };
+
   const slateGames = selectedSlateId
     ? await admin
       .from('slate_games')
@@ -177,6 +185,8 @@ export async function GET(req: NextRequest) {
       rank: idx + 1,
       user_display: profileByUser.get(e.user_id) ?? 'User',
     })),
+    valuationInputs: valuationInputsQ.data ?? [],
+    projectionOverrides: projectionOverridesQ.data ?? [],
   });
 }
 
@@ -519,6 +529,52 @@ export async function POST(req: NextRequest) {
       }
 
       const { error } = await admin.from('slate_players').update(updatePayload).eq('id', payload.slate_player_id);
+      if (error) throw error;
+      return NextResponse.json({ ok: true });
+    }
+
+    if (action === 'upsert_player_valuation_input') {
+      if (!isAdminRole(actor.role)) return NextResponse.json({ error: 'Admin only' }, { status: 403 });
+      const grade = String(payload.player_grade || 'C').toUpperCase();
+      if (!['A', 'B', 'C', 'D', 'F'].includes(grade)) {
+        return NextResponse.json({ error: 'Invalid player grade.' }, { status: 400 });
+      }
+      const { error } = await admin.from('player_valuation_inputs').upsert({
+        season_id: payload.season_id,
+        player_id: payload.player_id,
+        min_sample_games: Number(payload.min_sample_games ?? 2),
+        fallback_position_baseline: payload.fallback_position_baseline != null ? Number(payload.fallback_position_baseline) : null,
+        player_grade: grade,
+        notes: payload.notes ?? null,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'season_id,player_id' });
+      if (error) throw error;
+      return NextResponse.json({ ok: true });
+    }
+
+    if (action === 'upsert_player_projection_override') {
+      if (!isAdminRole(actor.role)) return NextResponse.json({ error: 'Admin only' }, { status: 403 });
+
+      const hasProjection = payload.projection_points != null && String(payload.projection_points).trim() !== '';
+      const hasSalary = payload.salary_override != null && String(payload.salary_override).trim() !== '';
+      if (!hasProjection && !hasSalary) {
+        const { error } = await admin
+          .from('player_projection_overrides')
+          .delete()
+          .eq('season_id', payload.season_id)
+          .eq('player_id', payload.player_id);
+        if (error) throw error;
+        return NextResponse.json({ ok: true, deleted: true });
+      }
+
+      const { error } = await admin.from('player_projection_overrides').upsert({
+        season_id: payload.season_id,
+        player_id: payload.player_id,
+        projection_points: hasProjection ? Number(payload.projection_points) : 0,
+        salary_override: hasSalary ? Number(payload.salary_override) : null,
+        notes: payload.notes ?? null,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'season_id,player_id' });
       if (error) throw error;
       return NextResponse.json({ ok: true });
     }

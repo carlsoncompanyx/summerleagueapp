@@ -429,6 +429,8 @@ create table if not exists public.player_valuation_inputs (
   player_id uuid not null references public.players(id) on delete cascade,
   min_sample_games int not null default 2,
   fallback_position_baseline numeric(8,2),
+  player_grade text not null default 'C' check (player_grade in ('A','B','C','D','F')),
+  notes text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique(season_id, player_id)

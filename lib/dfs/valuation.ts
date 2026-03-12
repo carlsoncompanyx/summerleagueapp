@@ -1,5 +1,5 @@
 import { createAdminSupabaseClient } from '../supabase/admin';
-import { computeDfsFantasyPoints } from './scoring';
+import { computeDfsFantasyPoints, parseDfsPosition } from './scoring';
 
 type ValuationRow = {
   slate_id: string;
@@ -11,15 +11,32 @@ type ValuationRow = {
   baseline_points: number;
 };
 
+type PlayerGrade = 'A' | 'B' | 'C' | 'D' | 'F';
+
 function normalizePlayerName(name: string | null | undefined) {
   return (name ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 }
 
 function fallbackByPosition(position: string | null | undefined) {
   const p = (position ?? '').toLowerCase();
-  if (p.includes('goal')) return 5.2;
-  if (p.includes('def')) return 4.8;
-  return 6.0;
+  if (p.includes('goal')) return 5.0;
+  if (p.includes('def')) return 5.6;
+  return 6.2;
+}
+
+function gradeMultiplier(grade: string | null | undefined) {
+  const g = String(grade ?? 'C').toUpperCase();
+  if (g === 'A') return 1.2;
+  if (g === 'B') return 1.1;
+  if (g === 'D') return 0.9;
+  if (g === 'F') return 0.8;
+  return 1;
+}
+
+function asGrade(grade: string | null | undefined): PlayerGrade {
+  const g = String(grade ?? 'C').toUpperCase();
+  if (g === 'A' || g === 'B' || g === 'C' || g === 'D' || g === 'F') return g;
+  return 'C';
 }
 
 function levenshtein(a: string, b: string) {
@@ -77,12 +94,23 @@ function getBestHistoricalRows(player: any, historicalRows: any[]) {
   return { rows: [], confidence: 'none' };
 }
 
+function mean(values: number[]) {
+  if (!values.length) return null;
+  return values.reduce((sum, n) => sum + n, 0) / values.length;
+}
+
 /**
- * Projection precedence:
+ * Skater valuation precedence:
  * 1) manual projection override
- * 2) current-season production (same DFS scoring model as contest scoring)
- * 3) historical season-summary totals (points/season mapped to a per-game projection baseline)
- * 4) positional fallback baseline
+ * 2) current-season DFS points/game sample (if sufficient)
+ * 3) historical per-game baseline from 16-game season assumption
+ * 4) league-average fallback
+ * 5) positional fallback
+ *
+ * Goalie valuation (manual-first for MVP):
+ * 1) manual salary override
+ * 2) manual projection override
+ * 3) grade-adjusted league-average goalie fallback
  */
 export async function buildSlateValuations({
   slateId,
@@ -124,17 +152,26 @@ export async function buildSlateValuations({
   const overrideByPlayer = new Map(overrides.map((o: any) => [o.player_id, o]));
   const valuationInputByPlayer = new Map(valuationInputs.map((v: any) => [v.player_id, v]));
 
-  const seasonSampleAverages = (seasonStats ?? [])
+  const skaterSeasonAverages = (seasonStats ?? [])
+    .filter((s: any) => parseDfsPosition(s.position) !== 'GOALIE')
     .map((s: any) => Number(s.fantasy_points_avg ?? 0))
     .filter((n: number) => Number.isFinite(n) && n > 0);
-  const leagueAverageFallback = seasonSampleAverages.length
-    ? Number((seasonSampleAverages.reduce((sum: number, n: number) => sum + n, 0) / seasonSampleAverages.length).toFixed(2))
-    : null;
 
-  const projections = players.map((p: any) => {
+  const goalieSeasonAverages = (seasonStats ?? [])
+    .filter((s: any) => parseDfsPosition(s.position) === 'GOALIE')
+    .map((s: any) => Number(s.fantasy_points_avg ?? 0))
+    .filter((n: number) => Number.isFinite(n) && n > 0);
+
+  const skaterLeagueAverage = mean(skaterSeasonAverages);
+  const goalieLeagueAverage = mean(goalieSeasonAverages);
+
+  const candidates = players.map((p: any) => {
     const seasonStat = seasonByPlayer.get(p.id);
     const override = overrideByPlayer.get(p.id);
     const valInput = valuationInputByPlayer.get(p.id);
+    const grade = asGrade(valInput?.player_grade);
+    const gradeMult = gradeMultiplier(grade);
+    const isGoalie = parseDfsPosition(p.position) === 'GOALIE';
 
     const minGames = Number(valInput?.min_sample_games ?? 2);
     const seasonGames = Number(seasonStat?.games_played ?? 0);
@@ -145,39 +182,57 @@ export async function buildSlateValuations({
       wins: Number(seasonStat?.wins ?? 0),
       goalsAgainst: Number(seasonStat?.goals_against ?? 0),
     });
-    const currentProjection = seasonGames >= minGames && seasonGames > 0
+
+    const currentProjection = !isGoalie && seasonGames >= minGames && seasonGames > 0
       ? Number((currentTotal / seasonGames).toFixed(2))
       : null;
 
     const historicalMatch = getBestHistoricalRows(p, historical);
     const historicalRows = historicalMatch.rows;
-    const historicalAvgPoints = historicalRows.length
-      ? historicalRows.reduce((sum: number, r: any) => sum + Number(r.points ?? (r.goals ?? 0) + (r.assists ?? 0)), 0) / historicalRows.length
+
+    // Historical data is season totals. Assume ~16-game seasons to derive skater per-game baseline.
+    const historicalSkaterPerGame = !isGoalie && historicalRows.length
+      ? mean(historicalRows.map((r: any) => {
+        const gpg = Number(r.goals ?? 0) / 16;
+        const apg = Number(r.assists ?? 0) / 16;
+        return 3 * gpg + 2 * apg;
+      }))
       : null;
 
-    const historicalProjection = historicalAvgPoints != null ? Math.max(3, historicalAvgPoints / 9.5) : null;
     const fallback = Number(valInput?.fallback_position_baseline ?? fallbackByPosition(p.position));
-    const leagueAverage = leagueAverageFallback != null ? Number(leagueAverageFallback) : null;
 
-    const projection = Number(
+    const skaterBaseProjection = Number(
       override?.projection_points
       ?? currentProjection
-      ?? historicalProjection
-      ?? leagueAverage
+      ?? historicalSkaterPerGame
+      ?? skaterLeagueAverage
       ?? fallback,
     );
+
+    const goalieBaseProjection = Number(
+      override?.projection_points
+      ?? ((goalieLeagueAverage ?? fallback) * gradeMult),
+    );
+
+    const baseProjection = isGoalie ? goalieBaseProjection : skaterBaseProjection;
+    const adjustedProjection = override?.projection_points != null
+      ? Number(override.projection_points)
+      : Number((baseProjection * gradeMult).toFixed(2));
 
     return {
       player: p,
       override,
-      projection,
-      baseline: historicalProjection ?? leagueAverage ?? fallback,
+      grade,
+      gradeMult,
+      isGoalie,
+      projection: adjustedProjection,
+      baseline: baseProjection,
     };
   });
 
   const byPosition = new Map<'SKATER' | 'GOALIE', number[]>();
-  for (const row of projections) {
-    const pos: 'SKATER' | 'GOALIE' = String(row.player.position || '').toLowerCase().includes('goal') ? 'GOALIE' : 'SKATER';
+  for (const row of candidates) {
+    const pos: 'SKATER' | 'GOALIE' = row.isGoalie ? 'GOALIE' : 'SKATER';
     if (!byPosition.has(pos)) byPosition.set(pos, []);
     byPosition.get(pos)!.push(row.projection);
   }
@@ -190,27 +245,32 @@ export async function buildSlateValuations({
     return (value - min) / (max - min);
   }
 
-  const initialRows = projections.map((row) => {
-    const p = row.player;
-    const pos: 'SKATER' | 'GOALIE' = String(p.position || '').toLowerCase().includes('goal') ? 'GOALIE' : 'SKATER';
+  const initialRows = candidates.map((row) => {
+    const pos: 'SKATER' | 'GOALIE' = row.isGoalie ? 'GOALIE' : 'SKATER';
     const norm = normalizeWithinPosition(row.projection, pos);
-    const tierMultiplier = pos === 'GOALIE'
-      ? (0.84 + norm * 0.34)
-      : (0.80 + norm * 0.46);
-    const seedSalary = Math.round(7600 * tierMultiplier);
+
+    const seedSalary = row.isGoalie
+      ? Math.round(6900 + norm * 1800)
+      : Math.round(5400 + norm * 4200);
+
+    const gradeBoost = row.isGoalie
+      ? (row.grade === 'A' ? 450 : row.grade === 'B' ? 250 : row.grade === 'D' ? -220 : row.grade === 'F' ? -400 : 0)
+      : (row.grade === 'A' ? 700 : row.grade === 'B' ? 350 : row.grade === 'D' ? -260 : row.grade === 'F' ? -520 : 0);
+
+    const computedSalary = Math.round(seedSalary + gradeBoost);
     const salary = Number(
       row.override?.salary_override
-      ?? Math.max(3600, Math.min(11800, seedSalary)),
+      ?? Math.max(3600, Math.min(12400, computedSalary)),
     );
 
     return {
       slate_id: slateId,
-      player_id: p.id,
-      team_id: p.team_id,
-      position: p.position,
+      player_id: row.player.id,
+      team_id: row.player.team_id,
+      position: row.player.position,
       salary,
       projection_points: Number(row.projection.toFixed(2)),
-      baseline_points: Number(Number(row.baseline).toFixed(2)),
+      baseline_points: Number(row.baseline.toFixed(2)),
     };
   });
 
@@ -222,7 +282,7 @@ export async function buildSlateValuations({
 
   return initialRows.map((row) => ({
     ...row,
-    salary: Math.max(3600, Math.min(11800, Math.round(Number(row.salary) * scalar))),
+    salary: Math.max(3600, Math.min(12400, Math.round(Number(row.salary) * scalar))),
   }));
 }
 
@@ -234,11 +294,12 @@ export async function getFantasyPlayerDetails(playerId: string, seasonId?: strin
   let currentQ = admin.from('fantasy_points_v').select('*').eq('player_id', playerId);
   if (seasonId) currentQ = currentQ.eq('season_id', seasonId);
 
-  const [current, historical, team, seasonOverride] = await Promise.all([
+  const [current, historical, team, seasonOverride, valuationInput] = await Promise.all([
     currentQ.order('season_id', { ascending: false }).limit(1).maybeSingle(),
     admin.from('player_historical_season_stats').select('*').order('season_label', { ascending: false }),
     player.team_id ? admin.from('teams').select('id,name').eq('id', player.team_id).maybeSingle() : Promise.resolve({ data: null as any }),
     seasonId ? admin.from('player_projection_overrides').select('*').eq('season_id', seasonId).eq('player_id', playerId).maybeSingle() : Promise.resolve({ data: null as any }),
+    seasonId ? admin.from('player_valuation_inputs').select('*').eq('season_id', seasonId).eq('player_id', playerId).maybeSingle() : Promise.resolve({ data: null as any }),
   ]);
 
   const historicalRows = historical.data ?? [];
@@ -252,16 +313,14 @@ export async function getFantasyPlayerDetails(playerId: string, seasonId?: strin
     : 0;
 
   const sampleGames = Number(current.data?.games_played ?? 0);
-  const hasLeagueAverage = current.data?.season_id != null;
+  const grade = asGrade(valuationInput.data?.player_grade);
   const pricingContext = seasonOverride.data?.projection_points != null
-    ? { source: 'manual_override', sourceLabel: 'Manual pricing override used for this slate season.' }
-    : sampleGames >= 2
+    ? { source: 'manual_override', sourceLabel: 'Manual projection override is active.' }
+    : sampleGames >= Number(valuationInput.data?.min_sample_games ?? 2)
       ? { source: 'current_sample', sourceLabel: 'Current-season sample is driving projection.' }
       : matchedRows.length
-        ? { source: 'historical_fallback', sourceLabel: 'Historical season stats are being used as fallback context.' }
-        : hasLeagueAverage
-          ? { source: 'league_average_fallback', sourceLabel: 'League-average fallback is being used (no reliable current or historical sample).' }
-          : { source: 'position_fallback', sourceLabel: 'Position baseline fallback is being used (limited sample data).' };
+        ? { source: 'historical_fallback', sourceLabel: 'Historical season rates are being used as fallback context.' }
+        : { source: 'league_average_fallback', sourceLabel: `League-average fallback (grade ${grade}) is being used.` };
 
   return {
     player,
@@ -275,5 +334,11 @@ export async function getFantasyPlayerDetails(playerId: string, seasonId?: strin
       matchConfidence: historicalMatch.confidence,
     },
     pricingContext,
+    valuation: {
+      grade,
+      notes: seasonOverride.data?.notes ?? valuationInput.data?.notes ?? null,
+      manualProjection: seasonOverride.data?.projection_points ?? null,
+      manualSalary: seasonOverride.data?.salary_override ?? null,
+    },
   };
 }

@@ -37,6 +37,16 @@ type DashboardResponse = {
 
 type DfsSlate = { id: string; name: string; status: string; season_id: string | null };
 type DfsSlatePlayer = { id: string; player_id: string; salary: number; projection_points: number; availability_status?: string; player?: { name?: string; position?: string; team_name?: string } };
+type DfsValuationRow = {
+  player_id: string;
+  player_name: string;
+  position: string;
+  grade: string;
+  min_sample_games: string;
+  manual_projection: string;
+  manual_salary: string;
+  notes: string;
+};
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'dashboard', label: 'Dashboard' },
@@ -100,6 +110,8 @@ export default function AdminClient() {
   const [dfsSlates, setDfsSlates] = useState<DfsSlate[]>([]);
   const [dfsAvailabilitySlateId, setDfsAvailabilitySlateId] = useState('');
   const [dfsSlatePlayers, setDfsSlatePlayers] = useState<DfsSlatePlayer[]>([]);
+  const [dfsValSeasonId, setDfsValSeasonId] = useState('');
+  const [dfsValuationRows, setDfsValuationRows] = useState<DfsValuationRow[]>([]);
 
   const [assignRegId, setAssignRegId] = useState<string | null>(null);
   const [assignForm, setAssignForm] = useState({ team_id: '', name: '', jersey: '', position: '' });
@@ -180,9 +192,10 @@ export default function AdminClient() {
       .then((j) => {
         setDfsSlates(j?.slates ?? []);
         if (!dfsAvailabilitySlateId && j?.recommendedSlateId) setDfsAvailabilitySlateId(j.recommendedSlateId);
+        if (!dfsValSeasonId && seasons.length) setDfsValSeasonId(seasons[0].id);
       })
       .catch(() => setDfsSlates([]));
-  }, [activeTab]);
+  }, [activeTab, seasons]);
 
   useEffect(() => {
     if (activeTab !== 'dfs' || !dfsAvailabilitySlateId) return;
@@ -191,6 +204,31 @@ export default function AdminClient() {
       .then((j) => setDfsSlatePlayers(j?.slatePlayers ?? []))
       .catch(() => setDfsSlatePlayers([]));
   }, [activeTab, dfsAvailabilitySlateId]);
+
+  useEffect(() => {
+    if (activeTab !== 'dfs' || !dfsValSeasonId) return;
+    Promise.all([
+      fetch(`/api/dfs?season_id=${encodeURIComponent(dfsValSeasonId)}`).then((r) => r.json()),
+    ]).then(([dfsJson]) => {
+      const inputByPlayer = new Map((dfsJson?.valuationInputs ?? []).map((r: any) => [r.player_id, r]));
+      const overrideByPlayer = new Map((dfsJson?.projectionOverrides ?? []).map((r: any) => [r.player_id, r]));
+      const seasonPlayers = players.filter((p) => p.season_id === dfsValSeasonId);
+      setDfsValuationRows(seasonPlayers.map((p) => {
+        const input: any = inputByPlayer.get(p.id);
+        const override: any = overrideByPlayer.get(p.id);
+        return {
+          player_id: p.id,
+          player_name: p.name,
+          position: p.position ?? '-',
+          grade: String(input?.player_grade ?? 'C').toUpperCase(),
+          min_sample_games: String(input?.min_sample_games ?? 2),
+          manual_projection: override?.projection_points != null ? String(override.projection_points) : '',
+          manual_salary: override?.salary_override != null ? String(override.salary_override) : '',
+          notes: (override?.notes ?? input?.notes ?? ''),
+        };
+      }));
+    }).catch(() => setDfsValuationRows([]));
+  }, [activeTab, dfsValSeasonId, players]);
 
   const runAction = async (action: string, payload?: any) => {
     setBusy(true);
@@ -483,6 +521,33 @@ export default function AdminClient() {
                 </tr>
               ))}
               {!dfsSlatePlayers.length && <tr><td colSpan={6} className="muted">Select a slate to manage player availability.</td></tr>}
+            </tbody>
+          </table>
+
+          <h3 style={{ marginTop: 16 }}>Player Valuation Controls</h3>
+          <div className="form-grid" style={{ marginTop: 8 }}>
+            <div className="form-field col-6"><label>Season</label><select value={dfsValSeasonId} onChange={(e) => setDfsValSeasonId(e.target.value)}><option value="">Select season...</option>{seasons.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
+          </div>
+          <table className="table" style={{ marginTop: 8 }}>
+            <thead><tr><th>Player</th><th>Pos</th><th>Grade</th><th>Min Games</th><th>Manual Proj</th><th>Manual Salary</th><th>Notes</th><th>Save</th></tr></thead>
+            <tbody>
+              {dfsValuationRows.map((row) => (
+                <tr key={row.player_id}>
+                  <td>{row.player_name}</td>
+                  <td>{row.position}</td>
+                  <td><select value={row.grade} onChange={(e) => setDfsValuationRows((prev) => prev.map((r) => r.player_id === row.player_id ? { ...r, grade: e.target.value } : r))}><option>A</option><option>B</option><option>C</option><option>D</option><option>F</option></select></td>
+                  <td><input value={row.min_sample_games} onChange={(e) => setDfsValuationRows((prev) => prev.map((r) => r.player_id === row.player_id ? { ...r, min_sample_games: e.target.value } : r))} /></td>
+                  <td><input value={row.manual_projection} onChange={(e) => setDfsValuationRows((prev) => prev.map((r) => r.player_id === row.player_id ? { ...r, manual_projection: e.target.value } : r))} /></td>
+                  <td><input value={row.manual_salary} onChange={(e) => setDfsValuationRows((prev) => prev.map((r) => r.player_id === row.player_id ? { ...r, manual_salary: e.target.value } : r))} /></td>
+                  <td><input value={row.notes} onChange={(e) => setDfsValuationRows((prev) => prev.map((r) => r.player_id === row.player_id ? { ...r, notes: e.target.value } : r))} /></td>
+                  <td><button type="button" onClick={async () => {
+                    await fetch('/api/dfs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'upsert_player_valuation_input', payload: { season_id: dfsValSeasonId, player_id: row.player_id, player_grade: row.grade, min_sample_games: Number(row.min_sample_games || 2), notes: row.notes || null } }) });
+                    await fetch('/api/dfs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'upsert_player_projection_override', payload: { season_id: dfsValSeasonId, player_id: row.player_id, projection_points: row.manual_projection || null, salary_override: row.manual_salary || null, notes: row.notes || null } }) });
+                    setSuccess(`Saved valuation controls for ${row.player_name}.`);
+                  }}>Save</button></td>
+                </tr>
+              ))}
+              {!dfsValuationRows.length && <tr><td colSpan={8} className="muted">Select a season to edit player grades and valuation overrides.</td></tr>}
             </tbody>
           </table>
         </section>
