@@ -353,6 +353,8 @@ create table if not exists public.slate_players (
   salary int not null,
   projection_points numeric(8,2) not null,
   baseline_points numeric(8,2) not null default 0,
+  availability_status text not null default 'AVAILABLE' check (availability_status in ('AVAILABLE','QUESTIONABLE','OUT')),
+  availability_projection_backup numeric(8,2),
   created_at timestamptz not null default now(),
   unique(slate_id, player_id)
 );

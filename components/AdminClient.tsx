@@ -36,6 +36,7 @@ type DashboardResponse = {
 };
 
 type DfsSlate = { id: string; name: string; status: string; season_id: string | null };
+type DfsSlatePlayer = { id: string; player_id: string; salary: number; projection_points: number; availability_status?: string; player?: { name?: string; position?: string; team_name?: string } };
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'dashboard', label: 'Dashboard' },
@@ -97,6 +98,8 @@ export default function AdminClient() {
   const [dfsContestCap, setDfsContestCap] = useState('50000');
   const [dfsContestMaxEntries, setDfsContestMaxEntries] = useState('5');
   const [dfsSlates, setDfsSlates] = useState<DfsSlate[]>([]);
+  const [dfsAvailabilitySlateId, setDfsAvailabilitySlateId] = useState('');
+  const [dfsSlatePlayers, setDfsSlatePlayers] = useState<DfsSlatePlayer[]>([]);
 
   const [assignRegId, setAssignRegId] = useState<string | null>(null);
   const [assignForm, setAssignForm] = useState({ team_id: '', name: '', jersey: '', position: '' });
@@ -174,9 +177,20 @@ export default function AdminClient() {
     if (activeTab !== 'dfs') return;
     fetch('/api/dfs')
       .then((r) => r.json())
-      .then((j) => setDfsSlates(j?.slates ?? []))
+      .then((j) => {
+        setDfsSlates(j?.slates ?? []);
+        if (!dfsAvailabilitySlateId && j?.recommendedSlateId) setDfsAvailabilitySlateId(j.recommendedSlateId);
+      })
       .catch(() => setDfsSlates([]));
   }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab !== 'dfs' || !dfsAvailabilitySlateId) return;
+    fetch(`/api/dfs?slate_id=${encodeURIComponent(dfsAvailabilitySlateId)}`)
+      .then((r) => r.json())
+      .then((j) => setDfsSlatePlayers(j?.slatePlayers ?? []))
+      .catch(() => setDfsSlatePlayers([]));
+  }, [activeTab, dfsAvailabilitySlateId]);
 
   const runAction = async (action: string, payload?: any) => {
     setBusy(true);
@@ -435,6 +449,42 @@ export default function AdminClient() {
               }
             }}>Create Contest</button></div>
           </div>
+
+          <h3 style={{ marginTop: 14 }}>Slate Player Availability</h3>
+          <div className="form-grid" style={{ marginTop: 8 }}>
+            <div className="form-field col-6"><label>Slate</label><select value={dfsAvailabilitySlateId} onChange={(e) => setDfsAvailabilitySlateId(e.target.value)}><option value="">Select slate...</option>{dfsSlates.map((s) => <option key={s.id} value={s.id}>{s.name} · {s.status}</option>)}</select></div>
+          </div>
+          <table className="table" style={{ marginTop: 8 }}>
+            <thead><tr><th>Player</th><th>Team</th><th>Pos</th><th>Salary</th><th>Projection</th><th>Availability</th></tr></thead>
+            <tbody>
+              {dfsSlatePlayers.map((p) => (
+                <tr key={p.id}>
+                  <td>{p.player?.name ?? p.player_id}</td>
+                  <td>{p.player?.team_name ?? '-'}</td>
+                  <td>{p.player?.position ?? '-'}</td>
+                  <td>{p.salary}</td>
+                  <td>{Number(p.projection_points ?? 0).toFixed(2)}</td>
+                  <td>
+                    <select value={(p.availability_status ?? 'AVAILABLE').toUpperCase()} onChange={async (e) => {
+                      const status = e.target.value;
+                      await fetch('/api/dfs', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ action: 'update_slate_player_availability', payload: { slate_player_id: p.id, availability_status: status } }),
+                      });
+                      const j = await fetch(`/api/dfs?slate_id=${encodeURIComponent(dfsAvailabilitySlateId)}`).then((r) => r.json());
+                      setDfsSlatePlayers(j?.slatePlayers ?? []);
+                    }}>
+                      <option value="AVAILABLE">Available</option>
+                      <option value="QUESTIONABLE">Questionable</option>
+                      <option value="OUT">Out</option>
+                    </select>
+                  </td>
+                </tr>
+              ))}
+              {!dfsSlatePlayers.length && <tr><td colSpan={6} className="muted">Select a slate to manage player availability.</td></tr>}
+            </tbody>
+          </table>
         </section>
       )}
 

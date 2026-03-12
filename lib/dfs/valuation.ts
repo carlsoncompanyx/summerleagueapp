@@ -131,7 +131,7 @@ export async function buildSlateValuations({
     ? Number((seasonSampleAverages.reduce((sum: number, n: number) => sum + n, 0) / seasonSampleAverages.length).toFixed(2))
     : null;
 
-  return players.map((p: any) => {
+  const projections = players.map((p: any) => {
     const seasonStat = seasonByPlayer.get(p.id);
     const override = overrideByPlayer.get(p.id);
     const valInput = valuationInputByPlayer.get(p.id);
@@ -155,7 +155,6 @@ export async function buildSlateValuations({
       ? historicalRows.reduce((sum: number, r: any) => sum + Number(r.points ?? (r.goals ?? 0) + (r.assists ?? 0)), 0) / historicalRows.length
       : null;
 
-    // Historical totals are season summaries; convert to a conservative per-game baseline for DFS projections.
     const historicalProjection = historicalAvgPoints != null ? Math.max(3, historicalAvgPoints / 9.5) : null;
     const fallback = Number(valInput?.fallback_position_baseline ?? fallbackByPosition(p.position));
     const leagueAverage = leagueAverageFallback != null ? Number(leagueAverageFallback) : null;
@@ -168,9 +167,40 @@ export async function buildSlateValuations({
       ?? fallback,
     );
 
+    return {
+      player: p,
+      override,
+      projection,
+      baseline: historicalProjection ?? leagueAverage ?? fallback,
+    };
+  });
+
+  const byPosition = new Map<'SKATER' | 'GOALIE', number[]>();
+  for (const row of projections) {
+    const pos: 'SKATER' | 'GOALIE' = String(row.player.position || '').toLowerCase().includes('goal') ? 'GOALIE' : 'SKATER';
+    if (!byPosition.has(pos)) byPosition.set(pos, []);
+    byPosition.get(pos)!.push(row.projection);
+  }
+
+  function normalizeWithinPosition(value: number, position: 'SKATER' | 'GOALIE') {
+    const values = byPosition.get(position) ?? [value];
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    if (max <= min) return 0.5;
+    return (value - min) / (max - min);
+  }
+
+  const initialRows = projections.map((row) => {
+    const p = row.player;
+    const pos: 'SKATER' | 'GOALIE' = String(p.position || '').toLowerCase().includes('goal') ? 'GOALIE' : 'SKATER';
+    const norm = normalizeWithinPosition(row.projection, pos);
+    const tierMultiplier = pos === 'GOALIE'
+      ? (0.84 + norm * 0.34)
+      : (0.80 + norm * 0.46);
+    const seedSalary = Math.round(7600 * tierMultiplier);
     const salary = Number(
-      override?.salary_override
-      ?? Math.max(3200, Math.round(projection * 1150)),
+      row.override?.salary_override
+      ?? Math.max(3600, Math.min(11800, seedSalary)),
     );
 
     return {
@@ -179,10 +209,21 @@ export async function buildSlateValuations({
       team_id: p.team_id,
       position: p.position,
       salary,
-      projection_points: Number(projection.toFixed(2)),
-      baseline_points: Number((historicalProjection ?? fallback).toFixed(2)),
+      projection_points: Number(row.projection.toFixed(2)),
+      baseline_points: Number(Number(row.baseline).toFixed(2)),
     };
   });
+
+  const avgListedSalary = initialRows.length
+    ? initialRows.reduce((sum, r) => sum + Number(r.salary || 0), 0) / initialRows.length
+    : 7600;
+  const targetAverage = 7600;
+  const scalar = avgListedSalary > 0 ? targetAverage / avgListedSalary : 1;
+
+  return initialRows.map((row) => ({
+    ...row,
+    salary: Math.max(3600, Math.min(11800, Math.round(Number(row.salary) * scalar))),
+  }));
 }
 
 export async function getFantasyPlayerDetails(playerId: string, seasonId?: string) {

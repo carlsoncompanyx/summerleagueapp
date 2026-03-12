@@ -17,6 +17,8 @@ export default function DfsClient() {
   const [selectedContest, setSelectedContest] = useState('');
   const [slots, setSlots] = useState<any[]>(SLOT_CONFIG.map((slot) => ({ slot, player_id: '' })));
   const [activeSlot, setActiveSlot] = useState<SlotKey>('CAPTAIN');
+  const [manualSlotTargeting, setManualSlotTargeting] = useState(false);
+  const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
   const [msg, setMsg] = useState('');
   const [activeTab, setActiveTab] = useState<DfsTab>('submit');
   const [playerModalOpen, setPlayerModalOpen] = useState(false);
@@ -95,13 +97,14 @@ export default function DfsClient() {
   async function submit() {
     try {
       setMsg('');
-      const json = await post('submit_entry', {
-        contest_id: selectedContest,
-        slots,
-      });
-      setMsg(`Entry submitted: ${json.entryId}`);
+      const json = await post(editingEntryId ? 'update_entry' : 'submit_entry', editingEntryId
+        ? { entry_id: editingEntryId, slots }
+        : { contest_id: selectedContest, slots });
+      setMsg(editingEntryId ? `Entry updated: ${json.entryId}` : `Entry submitted: ${json.entryId}`);
       setSlots(SLOT_CONFIG.map((slot) => ({ slot, player_id: '' })));
       setActiveSlot('CAPTAIN');
+      setManualSlotTargeting(false);
+      setEditingEntryId(null);
       await load({ contestId: selectedContest, slateId: selectedSlate });
     } catch (e: any) {
       setMsg(`Error: ${e.message}`);
@@ -117,16 +120,44 @@ export default function DfsClient() {
 
   function addPlayerToLineup(player: any) {
     setMsg('');
-    if (!slotAllowsPlayer(activeSlot, player)) {
-      const fallbackSlot = SLOT_CONFIG.find((slot) => !slots.find((s) => s.slot === slot)?.player_id && slotAllowsPlayer(slot, player));
-      if (!fallbackSlot) {
-        setMsg('No valid lineup slot is available for that player.');
+    const selectedAvailability = String(player.availability_status || 'AVAILABLE').toUpperCase();
+    if (selectedAvailability === 'OUT') {
+      setMsg('This player is marked Out and cannot be added to new lineups.');
+      return;
+    }
+
+    if (manualSlotTargeting) {
+      if (!slotAllowsPlayer(activeSlot, player)) {
+        setMsg('Selected slot is not valid for this player.');
         return;
       }
-      setActiveSlot(fallbackSlot);
-      return addPlayerToLineupToSlot(player, fallbackSlot);
+      if (slots.find((s) => s.slot === activeSlot)?.player_id && !slotByPlayerId.get(player.player_id)) {
+        setMsg('Selected slot is occupied. Clear it or drag/swap intentionally.');
+        return;
+      }
+      addPlayerToLineupToSlot(player, activeSlot);
+      return;
     }
-    addPlayerToLineupToSlot(player, activeSlot);
+
+    const position = String(player.player?.position || player.position || '').toLowerCase();
+    const isGoalie = position.includes('goal');
+    const openSlots = slots.filter((s) => !s.player_id).map((s) => s.slot as SlotKey);
+
+    let fallbackSlot: SlotKey | undefined;
+    if (isGoalie) {
+      fallbackSlot = openSlots.find((slot) => slot === 'GOALIE');
+    } else {
+      const openSkater = openSlots.find((slot) => slot.startsWith('SKATER_'));
+      fallbackSlot = openSkater || openSlots.find((slot) => slot === 'CAPTAIN');
+      if (!fallbackSlot && !slots.find((s) => s.slot === 'CAPTAIN')?.player_id) fallbackSlot = 'CAPTAIN';
+    }
+
+    if (!fallbackSlot) {
+      setMsg('No valid lineup slot is available for that player.');
+      return;
+    }
+    setActiveSlot(fallbackSlot);
+    addPlayerToLineupToSlot(player, fallbackSlot);
   }
 
   function addPlayerToLineupToSlot(player: any, slot: SlotKey) {
@@ -154,6 +185,23 @@ export default function DfsClient() {
   function removePlayerFromSlot(slot: SlotKey) {
     setSlots((prev) => prev.map((s) => (s.slot === slot ? { ...s, player_id: '' } : s)));
     setMsg('');
+  }
+
+  function startEditingEntry(entry: any) {
+    const contest = data.contests.find((c: any) => c.id === entry.contest_id);
+    const lockAt = contest?.lock_at ? new Date(contest.lock_at).getTime() : null;
+    if (lockAt && lockAt <= Date.now()) {
+      setMsg('This entry is locked and can no longer be edited.');
+      return;
+    }
+    const nextSlots = SLOT_CONFIG.map((slot) => ({
+      slot,
+      player_id: (entry.slots ?? []).find((r: any) => r.slot === slot)?.player_id || '',
+    }));
+    setSlots(nextSlots);
+    setEditingEntryId(entry.id);
+    setActiveTab('submit');
+    setMsg(`Editing ${entry.display_label || entry.id.slice(0, 8)}`);
   }
 
   function onDragStart(e: any, slot: SlotKey) {
@@ -340,11 +388,14 @@ export default function DfsClient() {
                     {visiblePlayers.map((p: any) => {
                       const occupiedSlot = slotByPlayerId.get(p.player_id);
                       const invalidForSelectedSlot = !slotAllowsPlayer(activeSlot, p);
+                      const availability = String(p.availability_status || 'AVAILABLE').toUpperCase();
+                      const isOut = availability === 'OUT';
                       return (
-                        <tr key={p.id} className={invalidForSelectedSlot ? 'dfs-row-muted' : ''}>
+                        <tr key={p.id} className={invalidForSelectedSlot || isOut ? 'dfs-row-muted' : ''}>
                           <td>
                             <button type="button" className="link-button" onClick={() => openPlayerResearch(p)}>{p.player?.name || p.player_id.slice(0, 8)}</button>
                             {occupiedSlot && <span className="badge" style={{ marginLeft: 6 }}>In {slotLabel(occupiedSlot)}</span>}
+                            <span className="badge" style={{ marginLeft: 6 }}>{availability}</span>
                           </td>
                           <td>{p.player?.team_name || '-'}</td>
                           <td>{p.player?.position || p.position || '-'}</td>
@@ -353,7 +404,7 @@ export default function DfsClient() {
                           <td>{p.stats?.goals ?? 0}</td>
                           <td>{p.stats?.assists ?? 0}</td>
                           <td>{p.stats?.points ?? 0}</td>
-                          <td><button type="button" onClick={() => addPlayerToLineup(p)}>Add</button></td>
+                          <td><button type="button" onClick={() => addPlayerToLineup(p)} disabled={isOut}>Add</button></td>
                         </tr>
                       );
                     })}
@@ -379,13 +430,13 @@ export default function DfsClient() {
                       onDragStart={(e) => onDragStart(e, s.slot)}
                       onDragOver={(e) => e.preventDefault()}
                       onDrop={(e) => onDropSlot(e, s.slot)}
-                      onClick={() => setActiveSlot(s.slot)}
-                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setActiveSlot(s.slot); } }}
+                      onClick={() => { setActiveSlot(s.slot); setManualSlotTargeting(true); }}
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setActiveSlot(s.slot); setManualSlotTargeting(true); } }}
                     >
                       <div>
                         <div className="dfs-slot-label">{slotLabel(s.slot)}</div>
                         <div className="dfs-slot-player">{player ? player.player?.name : 'Select this slot, then add a player'}</div>
-                        {player && <div className="muted">{player.player?.team_name} · {player.player?.position} · ${player.salary}</div>}
+                        {player && <div className="muted">{player.player?.team_name} · {player.player?.position} · ${player.salary} · {String(player.availability_status || 'AVAILABLE')}</div>}
                       </div>
                       <div className="dfs-slot-actions">
                         {player && <button type="button" aria-label={`Remove ${player.player?.name ?? 'player'} from ${slotLabel(s.slot)}`} onClick={(e) => { e.stopPropagation(); removePlayerFromSlot(s.slot); }}>✕</button>}
@@ -395,22 +446,42 @@ export default function DfsClient() {
                 })}
               </div>
 
-              <p className="muted">Active slot: <strong>{slotLabel(activeSlot)}</strong></p>
+              <p className="muted">Active slot: <strong>{slotLabel(activeSlot)}</strong>{manualSlotTargeting ? ' (manual target)' : ' (auto add enabled)'}</p>
               <p className="muted">Salary used: {Math.round(salaryUsed)} / {currentContest?.salary_cap ?? '—'} · Remaining: {isNaN(salaryRemaining) ? '—' : Math.round(salaryRemaining)}</p>
               <p className="muted">Projected total: {projectedTotal.toFixed(2)}</p>
-              <button type="button" onClick={submit} disabled={!selectedContest || salaryRemaining < 0}>Submit Entry</button>
+              {slots.some((s) => {
+                const sp = data.slatePlayers.find((p: any) => p.player_id === s.player_id);
+                return sp && String(sp.availability_status || 'AVAILABLE').toUpperCase() === 'OUT';
+              }) && <p className="muted">⚠ This lineup includes player(s) marked Out. Replace them before saving.</p>}
+              <div className="form-actions" style={{ marginTop: 8 }}>
+                <button type="button" onClick={submit} disabled={!selectedContest || salaryRemaining < 0}>{editingEntryId ? 'Save Lineup Update' : 'Submit Entry'}</button>
+                {editingEntryId && <button type="button" onClick={() => { setEditingEntryId(null); setSlots(SLOT_CONFIG.map((slot) => ({ slot, player_id: '' }))); setManualSlotTargeting(false); setMsg('Edit canceled.'); }}>Cancel Edit</button>}
+              </div>
             </section>
           </div>
 
           <section className="card" style={{ marginBottom: 12 }}>
             <h2 className="section-title">My Entries</h2>
             <table className="table">
-              <thead><tr><th>Entry</th><th>Contest</th><th>Salary</th><th>Projected</th><th>Actual</th><th>Submitted</th></tr></thead>
+              <thead><tr><th>Entry</th><th>Contest</th><th>Salary</th><th>Projected</th><th>Actual</th><th>Submitted</th><th>Status</th><th>Action</th></tr></thead>
               <tbody>
                 {(data.myEntries ?? []).map((e: any, idx: number) => (
-                  <tr key={e.id}><td>{e.lineup_name || `Entry #${idx + 1}`}</td><td>{e.contest_name || e.contest_id}</td><td>{e.salary_used}</td><td>{e.projected_points}</td><td>{e.actual_points}</td><td>{new Date(e.created_at).toLocaleString()}</td></tr>
+                  <tr key={e.id}><td>{e.display_label || e.lineup_name || `Entry #${idx + 1}`}</td><td>{e.contest_name || e.contest_id}</td><td>{e.salary_used}</td><td>{e.projected_points}</td><td>{e.actual_points}</td><td>{new Date(e.created_at).toLocaleString()}</td><td>{(() => {
+                    const contest = data.contests.find((c: any) => c.id === e.contest_id);
+                    const lockAt = contest?.lock_at ? new Date(contest.lock_at).getTime() : null;
+                    if (lockAt && lockAt <= Date.now()) return 'Locked';
+                    const hasOut = (e.slots ?? []).some((slot: any) => {
+                      const sp = data.slatePlayers.find((p: any) => p.player_id === slot.player_id);
+                      return String(sp?.availability_status || 'AVAILABLE').toUpperCase() === 'OUT';
+                    });
+                    return hasOut ? 'Needs Update (Out player)' : 'Editable';
+                  })()}</td><td><button type="button" onClick={() => startEditingEntry(e)} disabled={(() => {
+                    const contest = data.contests.find((c: any) => c.id === e.contest_id);
+                    const lockAt = contest?.lock_at ? new Date(contest.lock_at).getTime() : null;
+                    return Boolean(lockAt && lockAt <= Date.now());
+                  })()}>Update</button></td></tr>
                 ))}
-                {!data.myEntries?.length && <tr><td colSpan={6} className="muted">No entries yet. Pick a contest and submit your lineup.</td></tr>}
+                {!data.myEntries?.length && <tr><td colSpan={8} className="muted">No entries yet. Pick a contest and submit your lineup.</td></tr>}
               </tbody>
             </table>
           </section>
