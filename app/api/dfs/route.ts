@@ -49,6 +49,28 @@ function generatedEntryLabel(entryId: string, index: number) {
   return `Entry #${index + 1} · ${entryId.slice(0, 8)}`;
 }
 
+async function rebuildSlatePlayersSnapshot(admin: any, slateId: string, seasonId: string) {
+  const lockAt = await getSlateLockAt(admin, slateId, null);
+  if (lockAt && new Date(lockAt).getTime() <= Date.now()) {
+    throw new Error('Slate is locked and cannot be repriced.');
+  }
+
+  const { data: contests } = await admin.from('contests').select('status').eq('slate_id', slateId);
+  const hasFinalizedContest = (contests ?? []).some((c: any) => ['live', 'final'].includes(String(c.status || '').toLowerCase()));
+  if (hasFinalizedContest) throw new Error('Slate has live/final contests and cannot be repriced.');
+
+  const { error: clearErr } = await admin.from('slate_players').delete().eq('slate_id', slateId);
+  if (clearErr) throw clearErr;
+
+  const valuations = await buildSlateValuations({ slateId, seasonId });
+  if (valuations.length) {
+    const { error: insertErr } = await admin.from('slate_players').insert(valuations);
+    if (insertErr) throw insertErr;
+  }
+
+  return { rebuiltCount: valuations.length };
+}
+
 export async function GET(req: NextRequest) {
   const slateId = req.nextUrl.searchParams.get('slate_id');
   const contestId = req.nextUrl.searchParams.get('contest_id');
@@ -264,7 +286,15 @@ export async function POST(req: NextRequest) {
         .maybeSingle();
 
       if (existingSlate) {
-        return NextResponse.json({ ok: true, slateId: existingSlate.id, message: 'Default slate for next game day already exists.' });
+        const rebuild = await rebuildSlatePlayersSnapshot(admin, existingSlate.id, nextGame.season_id);
+        return NextResponse.json({
+          ok: true,
+          slateId: existingSlate.id,
+          repriced: true,
+          rebuiltCount: rebuild.rebuiltCount,
+          slateDate: gameDate,
+          message: `Default slate repriced (${rebuild.rebuiltCount} players).`,
+        });
       }
 
       const { data: slate, error } = await admin.from('slates').insert({
@@ -309,6 +339,20 @@ export async function POST(req: NextRequest) {
     }
 
 
+    if (action === 'rebuild_slate_players') {
+      if (!isAdminRole(actor.role)) return NextResponse.json({ error: 'Admin only' }, { status: 403 });
+      const slateId = payload?.slate_id;
+      if (!slateId) return NextResponse.json({ error: 'slate_id is required.' }, { status: 400 });
+
+      const { data: slate, error: slateErr } = await admin.from('slates').select('id,season_id').eq('id', slateId).maybeSingle();
+      if (slateErr) throw slateErr;
+      if (!slate) return NextResponse.json({ error: 'Slate not found.' }, { status: 404 });
+
+      const rebuildSeasonId = payload?.season_id ?? slate.season_id;
+      if (!rebuildSeasonId) return NextResponse.json({ error: 'Unable to resolve slate season for repricing.' }, { status: 400 });
+      const rebuild = await rebuildSlatePlayersSnapshot(admin, slate.id, rebuildSeasonId);
+      return NextResponse.json({ ok: true, slateId: slate.id, rebuiltCount: rebuild.rebuiltCount, repriced: true });
+    }
 
     if (action === 'update_slate_status') {
       if (!isAdminRole(actor.role)) return NextResponse.json({ error: 'Admin only' }, { status: 403 });

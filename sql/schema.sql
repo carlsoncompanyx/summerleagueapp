@@ -355,6 +355,13 @@ create table if not exists public.slate_players (
   baseline_points numeric(8,2) not null default 0,
   availability_status text not null default 'AVAILABLE' check (availability_status in ('AVAILABLE','QUESTIONABLE','OUT')),
   availability_projection_backup numeric(8,2),
+  valuation_source text,
+  valuation_grade text,
+  historical_match_name text,
+  historical_match_confidence text,
+  current_projection_input numeric(8,2),
+  historical_projection_input numeric(8,2),
+  league_average_projection_input numeric(8,2),
   created_at timestamptz not null default now(),
   unique(slate_id, player_id)
 );

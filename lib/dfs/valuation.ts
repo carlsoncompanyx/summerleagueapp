@@ -9,6 +9,13 @@ type ValuationRow = {
   salary: number;
   projection_points: number;
   baseline_points: number;
+  valuation_source?: string;
+  valuation_grade?: string;
+  historical_match_name?: string | null;
+  historical_match_confidence?: string;
+  current_projection_input?: number | null;
+  historical_projection_input?: number | null;
+  league_average_projection_input?: number | null;
 };
 
 type PlayerGrade = 'A' | 'B' | 'C' | 'D' | 'F';
@@ -219,6 +226,18 @@ export async function buildSlateValuations({
       ? Number(override.projection_points)
       : Number((baseProjection * gradeMult).toFixed(2));
 
+    const valuationSource = override?.projection_points != null
+      ? 'manual_projection_override'
+      : !isGoalie && currentProjection != null
+        ? 'current_sample'
+        : !isGoalie && historicalSkaterPerGame != null
+          ? 'historical_16_game_rate'
+          : !isGoalie && skaterLeagueAverage != null
+            ? 'league_average_fallback'
+            : isGoalie && goalieLeagueAverage != null
+              ? 'goalie_league_average_fallback'
+              : 'positional_fallback';
+
     return {
       player: p,
       override,
@@ -227,6 +246,12 @@ export async function buildSlateValuations({
       isGoalie,
       projection: adjustedProjection,
       baseline: baseProjection,
+      valuationSource,
+      historicalMatchName: !isGoalie && historicalRows.length ? (historicalRows[0]?.player_name_raw ?? null) : null,
+      historicalMatchConfidence: !isGoalie ? historicalMatch.confidence : 'goalie_manual_first',
+      currentProjectionInput: !isGoalie ? currentProjection : null,
+      historicalProjectionInput: !isGoalie ? historicalSkaterPerGame : null,
+      leagueAverageInput: isGoalie ? goalieLeagueAverage : skaterLeagueAverage,
     };
   });
 
@@ -271,13 +296,20 @@ export async function buildSlateValuations({
       salary,
       projection_points: Number(row.projection.toFixed(2)),
       baseline_points: Number(row.baseline.toFixed(2)),
+      valuation_source: row.valuationSource,
+      valuation_grade: row.grade,
+      historical_match_name: row.historicalMatchName,
+      historical_match_confidence: row.historicalMatchConfidence,
+      current_projection_input: row.currentProjectionInput,
+      historical_projection_input: row.historicalProjectionInput,
+      league_average_projection_input: row.leagueAverageInput,
     };
   });
 
   const avgListedSalary = initialRows.length
     ? initialRows.reduce((sum, r) => sum + Number(r.salary || 0), 0) / initialRows.length
     : 7600;
-  const targetAverage = 7600;
+  const targetAverage = 7800;
   const scalar = avgListedSalary > 0 ? targetAverage / avgListedSalary : 1;
 
   return initialRows.map((row) => ({

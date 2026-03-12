@@ -36,7 +36,7 @@ type DashboardResponse = {
 };
 
 type DfsSlate = { id: string; name: string; status: string; season_id: string | null };
-type DfsSlatePlayer = { id: string; player_id: string; salary: number; projection_points: number; availability_status?: string; player?: { name?: string; position?: string; team_name?: string } };
+type DfsSlatePlayer = { id: string; player_id: string; salary: number; projection_points: number; baseline_points?: number; availability_status?: string; valuation_source?: string; valuation_grade?: string; historical_match_name?: string | null; historical_match_confidence?: string | null; current_projection_input?: number | null; historical_projection_input?: number | null; league_average_projection_input?: number | null; player?: { name?: string; position?: string; team_name?: string } };
 type DfsValuationRow = {
   player_id: string;
   player_name: string;
@@ -158,6 +158,12 @@ export default function AdminClient() {
   const homePlayers = scoreGame ? players.filter((p) => p.team_id === scoreGame.home_team) : [];
   const awayPlayers = scoreGame ? players.filter((p) => p.team_id === scoreGame.away_team) : [];
 
+  const refreshDfsSlatePlayers = async (slateId: string) => {
+    if (!slateId) return;
+    const j = await fetch(`/api/dfs?slate_id=${encodeURIComponent(slateId)}`).then((r) => r.json());
+    setDfsSlatePlayers(j?.slatePlayers ?? []);
+  };
+
   const load = async () => {
     setLoading(true);
     setError(null);
@@ -199,10 +205,7 @@ export default function AdminClient() {
 
   useEffect(() => {
     if (activeTab !== 'dfs' || !dfsAvailabilitySlateId) return;
-    fetch(`/api/dfs?slate_id=${encodeURIComponent(dfsAvailabilitySlateId)}`)
-      .then((r) => r.json())
-      .then((j) => setDfsSlatePlayers(j?.slatePlayers ?? []))
-      .catch(() => setDfsSlatePlayers([]));
+    refreshDfsSlatePlayers(dfsAvailabilitySlateId).catch(() => setDfsSlatePlayers([]));
   }, [activeTab, dfsAvailabilitySlateId]);
 
   useEffect(() => {
@@ -436,13 +439,40 @@ export default function AdminClient() {
                 const res = await fetch('/api/dfs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'auto_generate_default_next_slate_day', payload: {} }) });
                 const json = await res.json();
                 if (!res.ok) throw new Error(json?.error || 'Failed to generate default slate');
-                setSuccess(`Default slate generated: ${json.slateId}`);
+                const mode = json?.repriced ? 'repriced' : 'generated';
+                const rebuilt = json?.rebuiltCount != null ? ` · ${json.rebuiltCount} players` : '';
+                setSuccess(`Default slate ${mode}: ${json.slateId}${rebuilt}`);
+                const refreshed = await fetch('/api/dfs').then((r) => r.json());
+                setDfsSlates(refreshed?.slates ?? []);
+                if (json?.slateId) {
+                  setDfsAvailabilitySlateId(json.slateId);
+                  await refreshDfsSlatePlayers(json.slateId);
+                }
               } catch (e: any) {
                 setError(e?.message || 'Failed to generate default slate');
               } finally {
                 setBusy(false);
               }
-            }}>Generate Next Playable Default Slate</button>
+            }}>Generate / Reprice Next Default Slate</button>
+            <button disabled={busy || !dfsAvailabilitySlateId} onClick={async () => {
+              setBusy(true);
+              setError(null);
+              try {
+                const res = await fetch('/api/dfs', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ action: 'rebuild_slate_players', payload: { slate_id: dfsAvailabilitySlateId } }),
+                });
+                const json = await res.json();
+                if (!res.ok) throw new Error(json?.error || 'Failed to rebuild slate players');
+                setSuccess(`Slate repriced (${json.rebuiltCount ?? 0} players rebuilt).`);
+                await refreshDfsSlatePlayers(dfsAvailabilitySlateId);
+              } catch (e: any) {
+                setError(e?.message || 'Failed to rebuild slate players');
+              } finally {
+                setBusy(false);
+              }
+            }}>Rebuild/Reprice Selected Slate Players</button>
           </div>
 
           <div className="form-grid" style={{ marginTop: 8 }}>
@@ -493,15 +523,21 @@ export default function AdminClient() {
             <div className="form-field col-6"><label>Slate</label><select value={dfsAvailabilitySlateId} onChange={(e) => setDfsAvailabilitySlateId(e.target.value)}><option value="">Select slate...</option>{dfsSlates.map((s) => <option key={s.id} value={s.id}>{s.name} · {s.status}</option>)}</select></div>
           </div>
           <table className="table" style={{ marginTop: 8 }}>
-            <thead><tr><th>Player</th><th>Team</th><th>Pos</th><th>Salary</th><th>Projection</th><th>Availability</th></tr></thead>
+            <thead><tr><th>Player</th><th>Team</th><th>Pos</th><th>Grade</th><th>Source</th><th>Hist Match</th><th>Salary</th><th>Projection</th><th>Current In</th><th>Hist In</th><th>Lg Avg In</th><th>Availability</th></tr></thead>
             <tbody>
               {dfsSlatePlayers.map((p) => (
                 <tr key={p.id}>
                   <td>{p.player?.name ?? p.player_id}</td>
                   <td>{p.player?.team_name ?? '-'}</td>
                   <td>{p.player?.position ?? '-'}</td>
+                  <td>{p.valuation_grade ?? '-'}</td>
+                  <td>{p.valuation_source ?? '-'}</td>
+                  <td>{p.historical_match_name ? `${p.historical_match_name} (${p.historical_match_confidence ?? 'n/a'})` : '-'}</td>
                   <td>{p.salary}</td>
                   <td>{Number(p.projection_points ?? 0).toFixed(2)}</td>
+                  <td>{p.current_projection_input != null ? Number(p.current_projection_input).toFixed(2) : '-'}</td>
+                  <td>{p.historical_projection_input != null ? Number(p.historical_projection_input).toFixed(2) : '-'}</td>
+                  <td>{p.league_average_projection_input != null ? Number(p.league_average_projection_input).toFixed(2) : '-'}</td>
                   <td>
                     <select value={(p.availability_status ?? 'AVAILABLE').toUpperCase()} onChange={async (e) => {
                       const status = e.target.value;
@@ -510,8 +546,7 @@ export default function AdminClient() {
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ action: 'update_slate_player_availability', payload: { slate_player_id: p.id, availability_status: status } }),
                       });
-                      const j = await fetch(`/api/dfs?slate_id=${encodeURIComponent(dfsAvailabilitySlateId)}`).then((r) => r.json());
-                      setDfsSlatePlayers(j?.slatePlayers ?? []);
+                      await refreshDfsSlatePlayers(dfsAvailabilitySlateId);
                     }}>
                       <option value="AVAILABLE">Available</option>
                       <option value="QUESTIONABLE">Questionable</option>
@@ -520,7 +555,7 @@ export default function AdminClient() {
                   </td>
                 </tr>
               ))}
-              {!dfsSlatePlayers.length && <tr><td colSpan={6} className="muted">Select a slate to manage player availability.</td></tr>}
+              {!dfsSlatePlayers.length && <tr><td colSpan={12} className="muted">Select a slate to manage player availability.</td></tr>}
             </tbody>
           </table>
 
