@@ -22,6 +22,61 @@ function fallbackByPosition(position: string | null | undefined) {
   return 6.0;
 }
 
+function levenshtein(a: string, b: string) {
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+
+  const matrix = Array.from({ length: a.length + 1 }, () => new Array(b.length + 1).fill(0));
+  for (let i = 0; i <= a.length; i += 1) matrix[i][0] = i;
+  for (let j = 0; j <= b.length; j += 1) matrix[0][j] = j;
+
+  for (let i = 1; i <= a.length; i += 1) {
+    for (let j = 1; j <= b.length; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      matrix[i][j] = Math.min(
+        matrix[i - 1][j] + 1,
+        matrix[i][j - 1] + 1,
+        matrix[i - 1][j - 1] + cost,
+      );
+    }
+  }
+
+  return matrix[a.length][b.length];
+}
+
+function getBestHistoricalRows(player: any, historicalRows: any[]) {
+  const byPlayerId = historicalRows.filter((r) => r.player_id === player.id);
+  if (byPlayerId.length) return { rows: byPlayerId, confidence: 'id_match' };
+
+  const normalized = normalizePlayerName(player.name);
+  const exact = historicalRows.filter((r) => r.normalized_player_name === normalized);
+  if (exact.length) return { rows: exact, confidence: 'normalized_exact' };
+
+  let bestName = '';
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (const row of historicalRows) {
+    const candidate = row.normalized_player_name;
+    if (!candidate) continue;
+    const distance = levenshtein(normalized, candidate);
+    const maxLen = Math.max(candidate.length, normalized.length) || 1;
+    const ratio = distance / maxLen;
+    if (ratio <= 0.18 && distance < bestDistance) {
+      bestDistance = distance;
+      bestName = candidate;
+    }
+  }
+
+  if (bestName) {
+    return {
+      rows: historicalRows.filter((r) => r.normalized_player_name === bestName),
+      confidence: 'normalized_fuzzy',
+    };
+  }
+
+  return { rows: [], confidence: 'none' };
+}
+
 /**
  * Projection precedence:
  * 1) manual projection override
@@ -69,13 +124,6 @@ export async function buildSlateValuations({
   const overrideByPlayer = new Map(overrides.map((o: any) => [o.player_id, o]));
   const valuationInputByPlayer = new Map(valuationInputs.map((v: any) => [v.player_id, v]));
 
-  const historicalByPlayer = new Map<string, any[]>();
-  for (const row of historical) {
-    const key = row.player_id ?? row.normalized_player_name;
-    if (!historicalByPlayer.has(key)) historicalByPlayer.set(key, []);
-    historicalByPlayer.get(key)!.push(row);
-  }
-
   return players.map((p: any) => {
     const seasonStat = seasonByPlayer.get(p.id);
     const override = overrideByPlayer.get(p.id);
@@ -94,17 +142,14 @@ export async function buildSlateValuations({
       ? Number((currentTotal / seasonGames).toFixed(2))
       : null;
 
-    const historicalRows = [
-      ...(historicalByPlayer.get(p.id) ?? []),
-      ...(historicalByPlayer.get(normalizePlayerName(p.name)) ?? []),
-    ];
-    const dedupHistorical = Array.from(new Map(historicalRows.map((r: any) => [r.id, r])).values());
-    const historicalAvgPoints = dedupHistorical.length
-      ? dedupHistorical.reduce((sum: number, r: any) => sum + Number(r.points ?? (r.goals ?? 0) + (r.assists ?? 0)), 0) / dedupHistorical.length
+    const historicalMatch = getBestHistoricalRows(p, historical);
+    const historicalRows = historicalMatch.rows;
+    const historicalAvgPoints = historicalRows.length
+      ? historicalRows.reduce((sum: number, r: any) => sum + Number(r.points ?? (r.goals ?? 0) + (r.assists ?? 0)), 0) / historicalRows.length
       : null;
 
     // Historical totals are season summaries; convert to a conservative per-game baseline for DFS projections.
-    const historicalProjection = historicalAvgPoints != null ? Math.max(3, historicalAvgPoints / 10) : null;
+    const historicalProjection = historicalAvgPoints != null ? Math.max(3, historicalAvgPoints / 9.5) : null;
     const fallback = Number(valInput?.fallback_position_baseline ?? fallbackByPosition(p.position));
 
     const projection = Number(
@@ -139,33 +184,43 @@ export async function getFantasyPlayerDetails(playerId: string, seasonId?: strin
   let currentQ = admin.from('fantasy_points_v').select('*').eq('player_id', playerId);
   if (seasonId) currentQ = currentQ.eq('season_id', seasonId);
 
-  const normalized = normalizePlayerName(player.name);
-  const [current, historical, team] = await Promise.all([
+  const [current, historical, team, seasonOverride] = await Promise.all([
     currentQ.order('season_id', { ascending: false }).limit(1).maybeSingle(),
-    admin
-      .from('player_historical_season_stats')
-      .select('*')
-      .or(`player_id.eq.${playerId},normalized_player_name.eq.${normalized}`)
-      .order('season_label', { ascending: false }),
+    admin.from('player_historical_season_stats').select('*').order('season_label', { ascending: false }),
     player.team_id ? admin.from('teams').select('id,name').eq('id', player.team_id).maybeSingle() : Promise.resolve({ data: null as any }),
+    seasonId ? admin.from('player_projection_overrides').select('*').eq('season_id', seasonId).eq('player_id', playerId).maybeSingle() : Promise.resolve({ data: null as any }),
   ]);
 
   const historicalRows = historical.data ?? [];
-  const histGoals = historicalRows.reduce((sum: number, r: any) => sum + Number(r.goals ?? 0), 0);
-  const histAssists = historicalRows.reduce((sum: number, r: any) => sum + Number(r.assists ?? 0), 0);
-  const histAvgPoints = historicalRows.length
-    ? historicalRows.reduce((sum: number, r: any) => sum + Number(r.points ?? 0), 0) / historicalRows.length
+  const historicalMatch = getBestHistoricalRows(player, historicalRows);
+  const matchedRows = historicalMatch.rows;
+
+  const histGoals = matchedRows.reduce((sum: number, r: any) => sum + Number(r.goals ?? 0), 0);
+  const histAssists = matchedRows.reduce((sum: number, r: any) => sum + Number(r.assists ?? 0), 0);
+  const histAvgPoints = matchedRows.length
+    ? matchedRows.reduce((sum: number, r: any) => sum + Number(r.points ?? 0), 0) / matchedRows.length
     : 0;
+
+  const sampleGames = Number(current.data?.games_played ?? 0);
+  const pricingContext = seasonOverride.data?.projection_points != null
+    ? { source: 'manual_override', sourceLabel: 'Manual pricing override used for this slate season.' }
+    : sampleGames >= 2
+      ? { source: 'current_sample', sourceLabel: 'Current-season sample is driving projection.' }
+      : matchedRows.length
+        ? { source: 'historical_fallback', sourceLabel: 'Historical season stats are being used as fallback context.' }
+        : { source: 'position_fallback', sourceLabel: 'Position baseline fallback is being used (limited sample data).' };
 
   return {
     player,
     team: team.data,
     current: current.data,
-    historical: historicalRows,
+    historical: matchedRows,
     historicalSummary: {
       goals: histGoals,
       assists: histAssists,
       avgPointsPerSeason: Number(histAvgPoints.toFixed(2)),
+      matchConfidence: historicalMatch.confidence,
     },
+    pricingContext,
   };
 }

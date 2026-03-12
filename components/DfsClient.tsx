@@ -3,7 +3,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import FantasyPlayerModal from './FantasyPlayerModal';
 
-const SLOT_CONFIG = ['CAPTAIN', 'SKATER_1', 'SKATER_2', 'SKATER_3', 'SKATER_4', 'GOALIE'];
+type SlotKey = 'CAPTAIN' | 'SKATER_1' | 'SKATER_2' | 'SKATER_3' | 'SKATER_4' | 'GOALIE';
+type SortKey = 'name' | 'team' | 'position' | 'salary' | 'projection' | 'goals' | 'assists' | 'points' | 'fantasy';
+
+const SLOT_CONFIG: SlotKey[] = ['CAPTAIN', 'SKATER_1', 'SKATER_2', 'SKATER_3', 'SKATER_4', 'GOALIE'];
 
 export default function DfsClient() {
   const [data, setData] = useState<any>({ slates: [], contests: [], seasons: [], slatePlayers: [], slateGames: [], recommendedSlateId: null, myEntries: [], actor: { role: 'FAN' } });
@@ -11,6 +14,7 @@ export default function DfsClient() {
   const [selectedContest, setSelectedContest] = useState('');
   const [lineupName, setLineupName] = useState('My Entry');
   const [slots, setSlots] = useState<any[]>(SLOT_CONFIG.map((slot) => ({ slot, player_id: '' })));
+  const [activeSlot, setActiveSlot] = useState<SlotKey>('CAPTAIN');
   const [msg, setMsg] = useState('');
   const [seasonIdForCreate, setSeasonIdForCreate] = useState('');
   const [newSlateName, setNewSlateName] = useState('Custom Slate');
@@ -22,7 +26,11 @@ export default function DfsClient() {
   const [playerModalOpen, setPlayerModalOpen] = useState(false);
   const [playerModalLoading, setPlayerModalLoading] = useState(false);
   const [playerModalData, setPlayerModalData] = useState<any>(null);
-  const [selectedPlayerContext, setSelectedPlayerContext] = useState<{ salary?: number; projection?: number }>({});
+  const [selectedPlayerContext, setSelectedPlayerContext] = useState<{ salary?: number; projection?: number; playerId?: string }>({});
+  const [positionFilter, setPositionFilter] = useState<'ALL' | 'SKATERS' | 'GOALIES'>('ALL');
+  const [search, setSearch] = useState('');
+  const [sortKey, setSortKey] = useState<SortKey>('projection');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
   async function load(slateId?: string) {
     const res = await fetch(`/api/dfs${slateId ? `?slate_id=${slateId}` : ''}`);
@@ -52,11 +60,21 @@ export default function DfsClient() {
   useEffect(() => { if (selectedSlate) load(selectedSlate); }, [selectedSlate]);
 
   const currentContest = data.contests.find((c: any) => c.id === selectedContest);
+
+  const slotByPlayerId = useMemo(() => {
+    const map = new Map<string, SlotKey>();
+    for (const slot of slots) {
+      if (slot.player_id) map.set(slot.player_id, slot.slot);
+    }
+    return map;
+  }, [slots]);
+
   const salaryUsed = useMemo(() => slots.reduce((sum, s) => {
     const sp = data.slatePlayers.find((p: any) => p.player_id === s.player_id);
     const mult = s.slot === 'CAPTAIN' ? 1.5 : 1;
     return sum + ((sp?.salary || 0) * mult);
   }, 0), [slots, data.slatePlayers]);
+
   const projectedTotal = useMemo(() => slots.reduce((sum, s) => {
     const sp = data.slatePlayers.find((p: any) => p.player_id === s.player_id);
     const mult = s.slot === 'CAPTAIN' ? 1.5 : 1;
@@ -64,6 +82,13 @@ export default function DfsClient() {
   }, 0), [slots, data.slatePlayers]);
 
   const salaryRemaining = Number(currentContest?.salary_cap ?? 0) - salaryUsed;
+
+  const validationMessage = useMemo(() => {
+    if (!selectedContest) return 'Select a contest to build a lineup.';
+    if (salaryRemaining < 0) return `Over salary cap by $${Math.abs(Math.round(salaryRemaining))}.`;
+    if (slots.some((s) => !s.player_id)) return 'Fill all lineup slots before submitting.';
+    return 'Lineup is valid and ready to submit.';
+  }, [selectedContest, salaryRemaining, slots]);
 
   async function post(action: string, payload: any) {
     const res = await fetch('/api/dfs', {
@@ -86,6 +111,7 @@ export default function DfsClient() {
       });
       setMsg(`Entry submitted: ${json.entryId}`);
       setSlots(SLOT_CONFIG.map((slot) => ({ slot, player_id: '' })));
+      setActiveSlot('CAPTAIN');
       await load(selectedSlate || undefined);
     } catch (e: any) {
       setMsg(`Error: ${e.message}`);
@@ -151,11 +177,85 @@ export default function DfsClient() {
     }
   }
 
+  function slotAllowsPlayer(slot: SlotKey, player: any) {
+    const pos = String(player.player?.position || player.position || '').toLowerCase();
+    const isGoalie = pos.includes('goal');
+    if (slot === 'GOALIE') return isGoalie;
+    return !isGoalie;
+  }
+
+  function tryAddPlayerToSlot(player: any, slot: SlotKey, { quiet = false }: { quiet?: boolean } = {}) {
+    if (!slotAllowsPlayer(slot, player)) {
+      if (!quiet) setMsg(slot === 'GOALIE' ? 'Goalie slot only accepts goalies.' : 'Captain/Skater slots only accept skaters.');
+      return false;
+    }
+
+    const alreadyIn = slotByPlayerId.get(player.player_id);
+    if (alreadyIn === slot) {
+      if (!quiet) setMsg(`${player.player?.name ?? 'Player'} is already in ${slotLabel(slot)}.`);
+      return true;
+    }
+
+    let nextSlots = [...slots];
+    const slotIndex = nextSlots.findIndex((s) => s.slot === slot);
+    if (slotIndex < 0) return false;
+
+    if (alreadyIn) {
+      const existingInTarget = nextSlots[slotIndex].player_id;
+      nextSlots = nextSlots.map((s) => {
+        if (s.slot === alreadyIn) return { ...s, player_id: existingInTarget || '' };
+        if (s.slot === slot) return { ...s, player_id: player.player_id };
+        return s;
+      });
+      setSlots(nextSlots);
+      if (!quiet) setMsg(`Swapped ${player.player?.name ?? 'player'} from ${slotLabel(alreadyIn)} to ${slotLabel(slot)}.`);
+      return true;
+    }
+
+    const targetPlayerId = nextSlots[slotIndex].player_id;
+    nextSlots[slotIndex] = { ...nextSlots[slotIndex], player_id: player.player_id };
+    if (targetPlayerId) {
+      const firstOpenCompatible = nextSlots.find((s) => !s.player_id && slotAllowsPlayer(s.slot, { ...player, player: { ...player.player, position: data.slatePlayers.find((p: any) => p.player_id === targetPlayerId)?.player?.position } }));
+      if (firstOpenCompatible) {
+        firstOpenCompatible.player_id = targetPlayerId;
+      } else {
+        const displacedPlayer = data.slatePlayers.find((p: any) => p.player_id === targetPlayerId);
+        if (displacedPlayer) {
+          const fallbackSlot = nextSlots.find((s) => !s.player_id && slotAllowsPlayer(s.slot, displacedPlayer));
+          if (fallbackSlot) fallbackSlot.player_id = targetPlayerId;
+        }
+      }
+    }
+
+    setSlots(nextSlots);
+    return true;
+  }
+
+  function addPlayerToLineup(player: any) {
+    setMsg('');
+    const orderedTargets: SlotKey[] = [activeSlot, ...SLOT_CONFIG.filter((s) => s !== activeSlot)];
+    for (const slot of orderedTargets) {
+      if (slotAllowsPlayer(slot, player)) {
+        const success = tryAddPlayerToSlot(player, slot, { quiet: true });
+        if (success) {
+          setActiveSlot(slot);
+          return;
+        }
+      }
+    }
+    setMsg('No valid lineup slot is available for that player.');
+  }
+
+  function removePlayerFromSlot(slot: SlotKey) {
+    setSlots((prev) => prev.map((s) => (s.slot === slot ? { ...s, player_id: '' } : s)));
+    setMsg('');
+  }
+
   async function openPlayerResearch(player: any) {
     try {
       setPlayerModalOpen(true);
       setPlayerModalLoading(true);
-      setSelectedPlayerContext({ salary: player.salary, projection: player.projection_points });
+      setSelectedPlayerContext({ salary: player.salary, projection: player.projection_points, playerId: player.player_id });
       const seasonForSlate = data.slates.find((s: any) => s.id === selectedSlate)?.season_id;
       const res = await fetch(`/api/dfs?player_id=${player.player_id}${seasonForSlate ? `&season_id=${encodeURIComponent(seasonForSlate)}` : ''}`);
       const json = await res.json();
@@ -165,12 +265,64 @@ export default function DfsClient() {
     }
   }
 
+  function getNumericPlayerField(player: any, key: SortKey) {
+    if (key === 'salary') return Number(player.salary || 0);
+    if (key === 'projection') return Number(player.projection_points || 0);
+    if (key === 'goals') return Number(player.stats?.goals || 0);
+    if (key === 'assists') return Number(player.stats?.assists || 0);
+    if (key === 'points') return Number(player.stats?.points || 0);
+    if (key === 'fantasy') return Number(player.stats?.fantasy_points || 0);
+    return 0;
+  }
+
+  const visiblePlayers = useMemo(() => {
+    const normalizedSearch = search.trim().toLowerCase();
+    const filtered = (data.slatePlayers ?? []).filter((p: any) => {
+      const pos = String(p.player?.position || p.position || '').toLowerCase();
+      const isGoalie = pos.includes('goal');
+      if (positionFilter === 'GOALIES' && !isGoalie) return false;
+      if (positionFilter === 'SKATERS' && isGoalie) return false;
+      if (!normalizedSearch) return true;
+      const haystack = `${p.player?.name ?? ''} ${p.player?.team_name ?? ''}`.toLowerCase();
+      return haystack.includes(normalizedSearch);
+    });
+
+    return filtered.sort((a: any, b: any) => {
+      let result = 0;
+      if (['salary', 'projection', 'goals', 'assists', 'points', 'fantasy'].includes(sortKey)) {
+        result = getNumericPlayerField(a, sortKey) - getNumericPlayerField(b, sortKey);
+      } else if (sortKey === 'team') {
+        result = String(a.player?.team_name || '').localeCompare(String(b.player?.team_name || ''));
+      } else if (sortKey === 'position') {
+        result = String(a.player?.position || a.position || '').localeCompare(String(b.player?.position || b.position || ''));
+      } else {
+        result = String(a.player?.name || '').localeCompare(String(b.player?.name || ''));
+      }
+      return sortDir === 'asc' ? result : -result;
+    });
+  }, [data.slatePlayers, positionFilter, search, sortKey, sortDir]);
+
+  function slotLabel(slot: SlotKey) {
+    if (slot === 'CAPTAIN') return 'Captain';
+    if (slot === 'GOALIE') return 'Goalie';
+    return slot.replace('_', ' ');
+  }
+
+  function changeSort(newKey: SortKey) {
+    if (newKey === sortKey) {
+      setSortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+      return;
+    }
+    setSortKey(newKey);
+    setSortDir(newKey === 'name' || newKey === 'team' || newKey === 'position' ? 'asc' : 'desc');
+  }
+
   const isAdmin = data.actor?.role === 'ADMIN';
 
   return (
     <main>
       <h1>DFS</h1>
-      <p className="muted">Lineup: 1 Captain, 4 Skaters, 1 Goalie. Captain uses 1.5x salary and 1.5x scoring.</p>
+      <p className="muted">Build one lineup with 1 Captain, 4 Skaters, and 1 Goalie. Captain gets 1.5x salary and scoring.</p>
       {msg && <p>{msg}</p>}
 
       {isAdmin && (
@@ -237,52 +389,106 @@ export default function DfsClient() {
         </table>
       </section>
 
-      <div className="grid" style={{ gridTemplateColumns: 'minmax(320px, 1.1fr) minmax(340px, 0.9fr)' }}>
-        <section className="card" style={{ marginBottom: 12 }}>
-          <h2 className="section-title">Player Pool</h2>
-          <table className="table">
-            <thead><tr><th>Player</th><th>Team</th><th>Pos</th><th>Salary</th><th>Proj</th></tr></thead>
-            <tbody>
-              {data.slatePlayers.map((p: any) => (
-                <tr key={p.id}>
-                  <td><button type="button" onClick={() => openPlayerResearch(p)}>{p.player?.name || p.player_id.slice(0, 8)}</button></td>
-                  <td>{p.player?.team_name || '-'}</td>
-                  <td>{p.player?.position || p.position || '-'}</td>
-                  <td>${p.salary}</td>
-                  <td>{Number(p.projection_points || 0).toFixed(2)}</td>
+      <div className="dfs-workspace">
+        <section className="card dfs-panel">
+          <div className="dfs-panel-header">
+            <h2 className="section-title">Player Pool</h2>
+            <div className="dfs-pool-controls">
+              <input placeholder="Search player or team" value={search} onChange={(e) => setSearch(e.target.value)} />
+              <select value={positionFilter} onChange={(e) => setPositionFilter(e.target.value as any)}>
+                <option value="ALL">All</option>
+                <option value="SKATERS">Skaters</option>
+                <option value="GOALIES">Goalies</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="dfs-scroll-table">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th><button type="button" className="link-button" onClick={() => changeSort('name')}>Player</button></th>
+                  <th><button type="button" className="link-button" onClick={() => changeSort('team')}>Team</button></th>
+                  <th><button type="button" className="link-button" onClick={() => changeSort('position')}>Pos</button></th>
+                  <th><button type="button" className="link-button" onClick={() => changeSort('salary')}>Salary</button></th>
+                  <th><button type="button" className="link-button" onClick={() => changeSort('projection')}>Proj</button></th>
+                  <th><button type="button" className="link-button" onClick={() => changeSort('goals')}>G</button></th>
+                  <th><button type="button" className="link-button" onClick={() => changeSort('assists')}>A</button></th>
+                  <th><button type="button" className="link-button" onClick={() => changeSort('points')}>P</button></th>
+                  <th>Add</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {visiblePlayers.map((p: any) => {
+                  const occupiedSlot = slotByPlayerId.get(p.player_id);
+                  const invalidForSelectedSlot = !slotAllowsPlayer(activeSlot, p);
+                  const captainPremium = activeSlot === 'CAPTAIN' ? Number(p.salary || 0) * 1.5 : Number(p.salary || 0);
+                  const wouldExceedCap = Number(currentContest?.salary_cap ?? 0) > 0 && (salaryUsed - (occupiedSlot ? Number(p.salary || 0) : 0) + captainPremium) > Number(currentContest?.salary_cap ?? 0);
+                  const muted = invalidForSelectedSlot || wouldExceedCap;
+
+                  return (
+                    <tr key={p.id} className={muted ? 'dfs-row-muted' : ''}>
+                      <td>
+                        <button type="button" className="link-button" onClick={() => openPlayerResearch(p)}>
+                          {p.player?.name || p.player_id.slice(0, 8)}
+                        </button>
+                        {occupiedSlot && <span className="badge" style={{ marginLeft: 6 }}>In {slotLabel(occupiedSlot)}</span>}
+                      </td>
+                      <td>{p.player?.team_name || '-'}</td>
+                      <td>{p.player?.position || p.position || '-'}</td>
+                      <td>${p.salary}</td>
+                      <td>{Number(p.projection_points || 0).toFixed(2)}</td>
+                      <td>{p.stats?.goals ?? 0}</td>
+                      <td>{p.stats?.assists ?? 0}</td>
+                      <td>{p.stats?.points ?? 0}</td>
+                      <td><button type="button" onClick={() => addPlayerToLineup(p)}>Add</button></td>
+                    </tr>
+                  );
+                })}
+                {!visiblePlayers.length && <tr><td colSpan={9} className="muted">No players match the current filters.</td></tr>}
+              </tbody>
+            </table>
+          </div>
         </section>
 
-        <section className="card" style={{ marginBottom: 12 }}>
+        <section className="card dfs-panel">
           <h2 className="section-title">Lineup Builder</h2>
-          <div className="form-grid">
-            <div className="form-field col-12">
-              <label>Lineup Name</label>
-              <input value={lineupName} onChange={(e) => setLineupName(e.target.value)} />
-            </div>
-            {slots.map((s, idx) => (
-              <div key={s.slot} className="form-field col-6">
-                <label>{s.slot === 'CAPTAIN' ? 'Captain (1.5x)' : s.slot}</label>
-                <select value={s.player_id} onChange={(e) => setSlots((prev) => prev.map((row, i) => i === idx ? { ...row, player_id: e.target.value } : row))}>
-                  <option value="">Select player...</option>
-                  {data.slatePlayers
-                    .filter((p: any) => {
-                      const pos = (p.player?.position || p.position || '').toLowerCase();
-                      const isGoalie = pos.includes('goal');
-                      if (s.slot === 'GOALIE') return isGoalie;
-                      return !isGoalie;
-                    })
-                    .map((p: any) => <option key={`${s.slot}-${p.player_id}`} value={p.player_id}>{p.player?.name || p.player_id.slice(0, 8)} · {p.player?.position || p.position} · ${p.salary}</option>)}
-                </select>
-              </div>
-            ))}
+          <div className="form-field" style={{ marginBottom: 10 }}>
+            <label>Lineup Name</label>
+            <input value={lineupName} onChange={(e) => setLineupName(e.target.value)} />
           </div>
+
+          <div className="dfs-lineup-stack">
+            {slots.map((s) => {
+              const player = data.slatePlayers.find((p: any) => p.player_id === s.player_id);
+              const isActive = s.slot === activeSlot;
+              return (
+                <div
+                  key={s.slot}
+                  className={`dfs-slot ${isActive ? 'is-active' : ''} ${s.slot === 'CAPTAIN' ? 'is-captain' : ''} ${s.slot === 'GOALIE' ? 'is-goalie' : ''}`}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setActiveSlot(s.slot)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setActiveSlot(s.slot); } }}
+                >
+                  <div>
+                    <div className="dfs-slot-label">{slotLabel(s.slot)}</div>
+                    <div className="dfs-slot-player">{player ? player.player?.name : 'Select this slot, then add a player'}</div>
+                    {player && <div className="muted">{player.player?.team_name} · {player.player?.position} · ${player.salary}</div>}
+                  </div>
+                  <div className="dfs-slot-actions">
+                    {player && <button type="button" onClick={(e) => { e.stopPropagation(); removePlayerFromSlot(s.slot); }}>Remove</button>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <p className="muted">Active slot: <strong>{slotLabel(activeSlot)}</strong></p>
           <p className="muted">Salary used: {Math.round(salaryUsed)} / {currentContest?.salary_cap ?? '—'} · Remaining: {isNaN(salaryRemaining) ? '—' : Math.round(salaryRemaining)}</p>
           <p className="muted">Projected total: {projectedTotal.toFixed(2)}</p>
-          <button type="button" onClick={submit} disabled={!selectedContest}>Submit Entry</button>
+          <p className="muted">{validationMessage}</p>
+          <button type="button" onClick={submit} disabled={!selectedContest || salaryRemaining < 0}>Submit Entry</button>
         </section>
       </div>
 
@@ -292,8 +498,9 @@ export default function DfsClient() {
           <thead><tr><th>Lineup</th><th>Contest</th><th>Salary</th><th>Projected</th><th>Actual</th><th>Submitted</th></tr></thead>
           <tbody>
             {(data.myEntries ?? []).map((e: any) => (
-              <tr key={e.id}><td>{e.lineup_name || e.id.slice(0, 8)}</td><td>{e.contest_id}</td><td>{e.salary_used}</td><td>{e.projected_points}</td><td>{e.actual_points}</td><td>{new Date(e.created_at).toLocaleString()}</td></tr>
+              <tr key={e.id}><td>{e.lineup_name || e.id.slice(0, 8)}</td><td>{e.contest_name || e.contest_id}</td><td>{e.salary_used}</td><td>{e.projected_points}</td><td>{e.actual_points}</td><td>{new Date(e.created_at).toLocaleString()}</td></tr>
             ))}
+            {!data.myEntries?.length && <tr><td colSpan={6} className="muted">No entries yet. Pick a contest and submit your lineup.</td></tr>}
           </tbody>
         </table>
       </section>
@@ -305,6 +512,10 @@ export default function DfsClient() {
         details={playerModalData}
         salary={selectedPlayerContext.salary}
         projection={selectedPlayerContext.projection}
+        onAddToLineup={() => {
+          const player = data.slatePlayers.find((p: any) => p.player_id === selectedPlayerContext.playerId);
+          if (player) addPlayerToLineup(player);
+        }}
       />
     </main>
   );

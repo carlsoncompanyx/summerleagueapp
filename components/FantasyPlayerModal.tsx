@@ -7,9 +7,10 @@ type Props = {
   details: any;
   salary?: number;
   projection?: number;
+  onAddToLineup?: () => void;
 };
 
-export default function FantasyPlayerModal({ open, onClose, loading, details, salary, projection }: Props) {
+export default function FantasyPlayerModal({ open, onClose, loading, details, salary, projection, onAddToLineup }: Props) {
   if (!open) return null;
 
   return (
@@ -29,6 +30,7 @@ export default function FantasyPlayerModal({ open, onClose, loading, details, sa
               <div className="form-field col-4"><label>Current Fantasy</label><div>{Number(details.current?.fantasy_points ?? 0).toFixed(1)} ({Number(details.current?.fantasy_points_avg ?? 0).toFixed(2)} FP/GP)</div></div>
               <div className="form-field col-6"><label>Current Projection</label><div>{projection != null ? Number(projection).toFixed(2) : '-'}</div></div>
               <div className="form-field col-6"><label>Current Salary</label><div>{salary != null ? `$${salary}` : '-'}</div></div>
+              <div className="form-field col-12"><label>Pricing Context</label><div>{details.pricingContext?.sourceLabel ?? 'Fallback baseline used.'}</div></div>
             </div>
 
             <h3 style={{ marginTop: 14 }}>Historical Seasons (Fantasy Research Only)</h3>
@@ -51,6 +53,7 @@ export default function FantasyPlayerModal({ open, onClose, loading, details, sa
         )}
 
         <div className="form-actions" style={{ marginTop: 12 }}>
+          {onAddToLineup && <button onClick={onAddToLineup}>Add to Lineup</button>}
           <button onClick={onClose}>Close</button>
         </div>
       </div>

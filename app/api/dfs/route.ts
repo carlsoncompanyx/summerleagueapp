@@ -76,18 +76,29 @@ export async function GET(req: NextRequest) {
   const { data: teams } = teamIds.length
     ? await admin.from('teams').select('id,name').in('id', teamIds)
     : { data: [] as any[] };
+  const slateSeasonId = slateId
+    ? (slates.data ?? []).find((s: any) => s.id === slateId)?.season_id
+    : undefined;
+
+  const { data: fantasyRows } = ids.length && slateSeasonId
+    ? await admin.from('fantasy_points_v').select('player_id,goals,assists,points,fantasy_points').eq('season_id', slateSeasonId).in('player_id', ids)
+    : { data: [] as any[] };
+
   const teamById = new Map((teams ?? []).map((t: any) => [t.id, t.name]));
+  const fantasyByPlayer = new Map((fantasyRows ?? []).map((r: any) => [r.player_id, r]));
   const byId = new Map((players ?? []).map((p: any) => [p.id, p]));
   const merged = rawPlayers.map((p: any) => {
     const player = byId.get(p.player_id) ?? null;
+    const stats = fantasyByPlayer.get(p.player_id) ?? null;
     return {
       ...p,
       player: player ? { ...player, team_name: teamById.get(player.team_id) ?? null } : null,
+      stats,
     };
   });
 
   const entriesQ = actor.userId
-    ? await admin.from('contest_entries').select('id,contest_id,user_id,lineup_name,projected_points,actual_points,salary_used,created_at').eq('user_id', actor.userId).order('created_at', { ascending: false })
+    ? await admin.from('contest_entries').select('id,contest_id,user_id,lineup_name,projected_points,actual_points,salary_used,created_at,contests(name)').eq('user_id', actor.userId).order('created_at', { ascending: false })
     : { data: [] as any[] };
 
   const now = Date.now();
@@ -120,7 +131,10 @@ export async function GET(req: NextRequest) {
       away_team_name: gameTeamMap.get(g.away_team) ?? g.away_team,
     })),
     recommendedSlateId: recommendedSlate?.id ?? null,
-    myEntries: entriesQ.data ?? [],
+    myEntries: (entriesQ.data ?? []).map((e: any) => ({
+      ...e,
+      contest_name: e.contests?.name ?? null,
+    })),
   });
 }
 

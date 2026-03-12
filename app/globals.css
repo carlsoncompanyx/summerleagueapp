@@ -300,3 +300,112 @@ button {
 .modal-card {
   width: min(980px, 100%);
 }
+
+.dfs-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.dfs-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 620px;
+}
+
+.dfs-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.dfs-pool-controls {
+  display: flex;
+  gap: 8px;
+}
+
+.dfs-scroll-table {
+  overflow: auto;
+  max-height: 520px;
+}
+
+.link-button {
+  background: transparent;
+  border: none;
+  color: #0b7285;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+}
+
+.dfs-lineup-stack {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.dfs-slot {
+  width: 100%;
+  text-align: left;
+  border: 1px solid #c9d7e2;
+  border-radius: 10px;
+  padding: 10px;
+  background: #f7fbff;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.dfs-slot.is-active {
+  border-color: #2EC4B6;
+  box-shadow: 0 0 0 2px rgba(46, 196, 182, 0.2);
+}
+
+.dfs-slot.is-captain {
+  background: #fff7e3;
+  border-color: #e9c46a;
+}
+
+.dfs-slot.is-goalie {
+  background: #ecf5ff;
+  border-color: #8eb8e5;
+}
+
+.dfs-slot-label {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 800;
+  color: #35556f;
+}
+
+.dfs-slot-player {
+  font-weight: 700;
+}
+
+.dfs-row-muted {
+  opacity: 0.55;
+}
+
+@media (max-width: 900px) {
+  .dfs-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .dfs-panel {
+    min-height: auto;
+  }
+
+  .dfs-scroll-table {
+    max-height: 360px;
+  }
+
+  .dfs-panel-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
