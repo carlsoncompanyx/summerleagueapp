@@ -264,7 +264,7 @@ summary,
     align-items: center;
   }
 
-  .fhttps://github.com/carlsoncompanyx/summerleagueapp/pull/5/conflict?name=app%252Fregister%252Fpage.tsx&base_oid=97cea9c77efd23602908dfb9248885e184da2e15&head_oid=5155af4e3f7f05533721ccb522f919dc2f702b3aorm-grid {
+  .form-grid {
     grid-template-columns: 1fr;
   }
 
@@ -421,4 +421,26 @@ summary,
     flex-direction: column;
     align-items: stretch;
   }
+}
+
+
+.responsive-table { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.game-slate-list, .betting-grid { display: grid; gap: 10px; }
+.game-card, .betting-card { border: 1px solid #d8e1e8; border-radius: 12px; padding: 12px; background: #fff; }
+.bet-line-row { display: flex; justify-content: space-between; gap: 8px; margin-top: 6px; }
+.dfs-builder-modal { width: min(760px, 100%); }
+.chat-stream { display: grid; gap: 8px; max-height: 55vh; overflow: auto; margin-bottom: 10px; }
+.chat-message { border: 1px solid #d8e1e8; border-radius: 10px; padding: 10px; background: #f9fcff; }
+.chat-message p { margin: 6px 0 0; }
+.chat-compose { display: grid; gap: 8px; }
+.forum-layout { display: grid; grid-template-columns: minmax(0,0.95fr) minmax(0,1.05fr); gap: 12px; }
+.forum-compose, .forum-thread-list { display: grid; gap: 8px; margin-bottom: 10px; }
+.forum-thread-card { text-align: left; background: #fff; border: 1px solid #d8e1e8; color: #173249; }
+.forum-active-thread { border: 1px solid #d8e1e8; border-radius: 12px; padding: 12px; display: grid; gap: 8px; }
+@media (max-width: 900px) {
+  .modal-overlay { padding: 0; align-items: stretch; }
+  .modal-card, .dfs-builder-modal { width: 100%; min-height: 100vh; border-radius: 0; }
+  .dfs-pool-controls { flex-direction: column; }
+  .forum-layout { grid-template-columns: 1fr; }
+  .bet-line-row { flex-direction: column; }
 }

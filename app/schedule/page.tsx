@@ -22,44 +22,28 @@ export default async function SchedulePage() {
       <section className="card" style={{ marginBottom: 12 }}>
         <h2 className="section-title">Upcoming Games</h2>
         {upcoming.length ? (
-          <table className="table">
-            <thead>
-              <tr><th>Date</th><th>Home Team</th><th>Away Team</th><th>Location</th></tr>
-            </thead>
+          <div className="responsive-table"><table className="table">
+            <thead><tr><th>Date</th><th>Home Team</th><th>Away Team</th><th>Location</th></tr></thead>
             <tbody>
               {upcoming.map((g) => (
-                <tr key={g.id}>
-                  <td>{new Date(g.scheduled_at).toLocaleString()}</td>
-                  <td>{g.home_team_name}</td>
-                  <td>{g.away_team_name}</td>
-                  <td>{g.location ?? 'TBD'}</td>
-                </tr>
+                <tr key={g.id}><td>{new Date(g.scheduled_at).toLocaleString()}</td><td>{g.home_team_name}</td><td>{g.away_team_name}</td><td>{g.location ?? 'TBD'}</td></tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         ) : <p className="muted">No upcoming games.</p>}
       </section>
 
       <section className="card">
         <h2 className="section-title">Completed Games</h2>
         {completed.length ? (
-          <table className="table">
-            <thead>
-              <tr><th>Date</th><th>Home Team</th><th>Away Team</th><th>Location</th><th>Home Score</th><th>Away Score</th></tr>
-            </thead>
+          <div className="responsive-table"><table className="table">
+            <thead><tr><th>Date</th><th>Home Team</th><th>Away Team</th><th>Location</th><th>Home Score</th><th>Away Score</th></tr></thead>
             <tbody>
               {completed.map((g) => (
-                <tr key={g.id}>
-                  <td>{new Date(g.scheduled_at).toLocaleString()}</td>
-                  <td>{g.home_team_name}</td>
-                  <td>{g.away_team_name}</td>
-                  <td>{g.location ?? 'TBD'}</td>
-                  <td>{g.home_score}</td>
-                  <td>{g.away_score}</td>
-                </tr>
+                <tr key={g.id}><td>{new Date(g.scheduled_at).toLocaleString()}</td><td>{g.home_team_name}</td><td>{g.away_team_name}</td><td>{g.location ?? 'TBD'}</td><td>{g.home_score}</td><td>{g.away_score}</td></tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         ) : <p className="muted">No completed games yet.</p>}
       </section>
     </main>

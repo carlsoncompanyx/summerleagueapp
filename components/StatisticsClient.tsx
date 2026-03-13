@@ -54,7 +54,7 @@ export default function StatisticsClient({ data }: { data: any }) {
         </div>
 
         <h3 className="card-title" style={{ marginTop: 14 }}>Goalies</h3>
-        <table className="table">
+        <div className="responsive-table"><table className="table">
           <thead><tr><th>Player</th><th>Team</th><th>GP</th><th>Wins</th><th>GA</th><th>GAA</th></tr></thead>
           <tbody>
             {topGoalies.map((r) => {
@@ -62,7 +62,7 @@ export default function StatisticsClient({ data }: { data: any }) {
               return <tr key={r.player_id}><td>{r.name}</td><td>{r.team_name}</td><td>{r.games_played}</td><td>{r.wins || 0}</td><td>{r.goals_against || 0}</td><td>{gaa}</td></tr>;
             })}
           </tbody>
-        </table>
+        </table></div>
       </section>
 
       <section className="card">
@@ -73,14 +73,14 @@ export default function StatisticsClient({ data }: { data: any }) {
             {teamOptions.map((t) => <option key={t} value={t}>{t}</option>)}
           </select>
         </div>
-        <table className="table">
+        <div className="responsive-table"><table className="table">
           <thead><tr><th>Player</th><th>Team</th><th>Pos</th><th>GP</th><th>G</th><th>A</th><th>P</th><th>Wins</th><th>GA</th></tr></thead>
           <tbody>
             {filtered.map((r) => (
               <tr key={r.player_id}><td>{r.name}</td><td>{r.team_name}</td><td>{r.position}</td><td>{r.games_played}</td><td>{r.goals}</td><td>{r.assists}</td><td>{r.points}</td><td>{r.wins || 0}</td><td>{r.goals_against || 0}</td></tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       </section>
     </main>
   );

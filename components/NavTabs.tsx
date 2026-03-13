@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import {
   BarChart2,
   Calendar,
+  CircleDollarSign,
   Flame,
   Home,
   MessageCircle,
@@ -23,6 +24,7 @@ const ITEMS = [
   { label: 'Statistics', href: '/statistics', testId: 'tab-statistics', icon: BarChart2 },
   { label: 'DFS', href: '/dfs', testId: 'tab-dfs', icon: Flame },
   { label: 'Community', href: '/chat', testId: 'tab-chat', icon: MessageCircle },
+  { label: 'Betting', href: '/betting', testId: 'tab-betting', icon: CircleDollarSign },
   { label: 'Trades', href: '/trades', testId: 'tab-trades', icon: Repeat },
   { label: 'Admin', href: '/admin', testId: 'tab-admin', icon: ShieldAlert },
 ] as const;
