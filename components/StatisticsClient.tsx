@@ -50,19 +50,22 @@ export default function StatisticsClient({ data }: { data: any }) {
               compact
             />
           ))}
-          {topSkaters.length === 0 && <p className="muted">No skater stats available.</p>}
+          {topSkaters.length === 0 && <p className="muted">No skater stats available yet.</p>}
         </div>
 
         <h3 className="card-title" style={{ marginTop: 14 }}>Goalies</h3>
-        <div className="responsive-table"><table className="table">
-          <thead><tr><th>Player</th><th>Team</th><th>GP</th><th>Wins</th><th>GA</th><th>GAA</th></tr></thead>
-          <tbody>
-            {topGoalies.map((r) => {
-              const gaa = r.games_played > 0 ? (Number(r.goals_against || 0) / r.games_played).toFixed(2) : '0.00';
-              return <tr key={r.player_id}><td>{r.name}</td><td>{r.team_name}</td><td>{r.games_played}</td><td>{r.wins || 0}</td><td>{r.goals_against || 0}</td><td>{gaa}</td></tr>;
-            })}
-          </tbody>
-        </table></div>
+        <div className="stack-list">
+          {topGoalies.map((r) => {
+            const gaa = r.games_played > 0 ? (Number(r.goals_against || 0) / r.games_played).toFixed(2) : '0.00';
+            return (
+              <article key={r.player_id} className="list-card compact">
+                <p><strong>{r.name}</strong> <span className="muted">({r.team_name})</span></p>
+                <p className="muted">GP {r.games_played} · Wins {r.wins || 0} · GA {r.goals_against || 0} · GAA {gaa}</p>
+              </article>
+            );
+          })}
+          {topGoalies.length === 0 && <p className="muted">No goalie stats available yet.</p>}
+        </div>
       </section>
 
       <section className="card">
@@ -73,14 +76,15 @@ export default function StatisticsClient({ data }: { data: any }) {
             {teamOptions.map((t) => <option key={t} value={t}>{t}</option>)}
           </select>
         </div>
-        <div className="responsive-table"><table className="table">
-          <thead><tr><th>Player</th><th>Team</th><th>Pos</th><th>GP</th><th>G</th><th>A</th><th>P</th><th>Wins</th><th>GA</th></tr></thead>
-          <tbody>
-            {filtered.map((r) => (
-              <tr key={r.player_id}><td>{r.name}</td><td>{r.team_name}</td><td>{r.position}</td><td>{r.games_played}</td><td>{r.goals}</td><td>{r.assists}</td><td>{r.points}</td><td>{r.wins || 0}</td><td>{r.goals_against || 0}</td></tr>
-            ))}
-          </tbody>
-        </table></div>
+        <div className="stack-list">
+          {filtered.map((r) => (
+            <article key={r.player_id} className="list-card compact">
+              <p><strong>{r.name}</strong> <span className="muted">({r.team_name}) · {r.position}</span></p>
+              <p className="muted">GP {r.games_played} · G {r.goals} · A {r.assists} · P {r.points} · Wins {r.wins || 0} · GA {r.goals_against || 0}</p>
+            </article>
+          ))}
+          {!filtered.length && <p className="muted">No statistics match this filter yet.</p>}
+        </div>
       </section>
     </main>
   );

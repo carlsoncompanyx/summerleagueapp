@@ -33,7 +33,7 @@ export default function ChatClient({ seasonId }: { seasonId?: string }) {
   }
 
   return (
-    <main>
+    <div>
       <div className="community-header card" style={{ marginBottom: 12 }}>
         <h2 className="section-title">Community</h2>
         <p className="muted">Live chat for quick banter, forums for longer discussion threads.</p>
@@ -102,6 +102,6 @@ export default function ChatClient({ seasonId }: { seasonId?: string }) {
           </div>
         </section>
       )}
-    </main>
+    </div>
   );
 }

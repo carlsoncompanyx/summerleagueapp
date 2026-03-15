@@ -67,11 +67,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               {session.isAuthenticated ? (
                 <>
                   <span className="badge">{session.label || 'Member'}</span>
-                  <Link className="header-auth-link" href="/register">Profile</Link>
+                  <Link className="header-auth-link" href="/register">Account</Link>
                 </>
               ) : (
                 <>
-                  <Link className="header-auth-link" href="/register">Sign Up</Link>
+                  <Link className="header-auth-link" href="/login">Join / Login</Link>
                   <Link className="header-auth-link" href="/login">Login</Link>
                 </>
               )}

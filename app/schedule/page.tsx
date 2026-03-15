@@ -4,47 +4,41 @@ export default async function SchedulePage() {
   const data = await getLeagueSnapshot();
 
   if ('unavailable' in data && data.unavailable) {
-    return (
-      <main>
-        <h1>Games</h1>
-        <p>{data.reason}</p>
-      </main>
-    );
+    return <main><h1>Games</h1><p>{data.reason}</p></main>;
   }
 
   const upcoming = data.schedule.filter((g) => g.status !== 'FINAL');
-  const completed = data.schedule.filter((g) => g.status === 'FINAL');
+  const completed = data.schedule.filter((g) => g.status === 'FINAL').reverse();
 
   return (
     <main>
       <h1>Games</h1>
 
       <section className="card" style={{ marginBottom: 12 }}>
-        <h2 className="section-title">Upcoming Games</h2>
-        {upcoming.length ? (
-          <div className="responsive-table"><table className="table">
-            <thead><tr><th>Date</th><th>Home Team</th><th>Away Team</th><th>Location</th></tr></thead>
-            <tbody>
-              {upcoming.map((g) => (
-                <tr key={g.id}><td>{new Date(g.scheduled_at).toLocaleString()}</td><td>{g.home_team_name}</td><td>{g.away_team_name}</td><td>{g.location ?? 'TBD'}</td></tr>
-              ))}
-            </tbody>
-          </table></div>
-        ) : <p className="muted">No upcoming games.</p>}
+        <h2 className="section-title">Upcoming</h2>
+        <div className="stack-list">
+          {upcoming.map((g) => (
+            <article key={g.id} className="list-card">
+              <p><strong>{g.away_team_name}</strong> @ <strong>{g.home_team_name}</strong></p>
+              <p className="muted">{new Date(g.scheduled_at).toLocaleString()}</p>
+              <p className="muted">{g.location ?? 'TBD'} · {g.status}</p>
+            </article>
+          ))}
+          {!upcoming.length && <p className="muted">No upcoming games.</p>}
+        </div>
       </section>
 
       <section className="card">
-        <h2 className="section-title">Completed Games</h2>
-        {completed.length ? (
-          <div className="responsive-table"><table className="table">
-            <thead><tr><th>Date</th><th>Home Team</th><th>Away Team</th><th>Location</th><th>Home Score</th><th>Away Score</th></tr></thead>
-            <tbody>
-              {completed.map((g) => (
-                <tr key={g.id}><td>{new Date(g.scheduled_at).toLocaleString()}</td><td>{g.home_team_name}</td><td>{g.away_team_name}</td><td>{g.location ?? 'TBD'}</td><td>{g.home_score}</td><td>{g.away_score}</td></tr>
-              ))}
-            </tbody>
-          </table></div>
-        ) : <p className="muted">No completed games yet.</p>}
+        <h2 className="section-title">Final Scores</h2>
+        <div className="stack-list">
+          {completed.map((g) => (
+            <article key={g.id} className="list-card">
+              <p><strong>{g.away_team_name} {g.away_score}</strong> · <strong>{g.home_team_name} {g.home_score}</strong></p>
+              <p className="muted">{new Date(g.scheduled_at).toLocaleString()} · Final</p>
+            </article>
+          ))}
+          {!completed.length && <p className="muted">No final scores yet.</p>}
+        </div>
       </section>
     </main>
   );

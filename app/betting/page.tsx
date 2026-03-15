@@ -37,7 +37,8 @@ export default async function BettingPage() {
             return (
               <article key={g.id} className="betting-card">
                 <h3>{g.away_team_name} @ {g.home_team_name}</h3>
-                <p className="muted">{new Date(g.scheduled_at).toLocaleString()}</p>
+                <p className="muted">{new Date(g.scheduled_at).toLocaleString()} · {g.status}</p>
+                <p className="muted">Score: {g.away_score} - {g.home_score}</p>
                 <div className="bet-line-row"><span>Moneyline</span><strong>{g.away_team_name} {line.away_moneyline} / {g.home_team_name} {line.home_moneyline}</strong></div>
                 <div className="bet-line-row"><span>Spread</span><strong>{g.away_team_name} {line.away_spread > 0 ? `+${line.away_spread}` : line.away_spread} / {g.home_team_name} {line.home_spread > 0 ? `+${line.home_spread}` : line.home_spread}</strong></div>
                 <div className="bet-line-row"><span>Total</span><strong>O/U {line.total}</strong></div>

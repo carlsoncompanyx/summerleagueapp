@@ -444,3 +444,25 @@ summary,
   .forum-layout { grid-template-columns: 1fr; }
   .bet-line-row { flex-direction: column; }
 }
+
+
+.stack-list { display: grid; gap: 8px; }
+.list-card { border: 1px solid #d8e1e8; border-radius: 12px; padding: 10px 12px; background: #fff; }
+.list-card.compact { padding: 8px 10px; }
+.standings-card { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+.standings-metrics { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+
+.tabs { gap: 8px; }
+.tab-link { min-width: 66px; font-size: 0.58rem; padding: 6px 8px; }
+.tab-link span { white-space: nowrap; }
+
+.hero .form-actions .header-auth-link { text-align: center; }
+
+@media (max-width: 900px) {
+  main { padding: 14px 12px 18px; }
+  .card, .hero { padding: 12px; border-radius: 12px; }
+  h1 { margin-bottom: 10px; }
+  .tabs { padding-bottom: 4px; }
+  .tab-link { min-width: 74px; font-size: 0.56rem; }
+  .logo-mark { width: 64px; height: 64px; }
+}

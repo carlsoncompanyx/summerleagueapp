@@ -5,91 +5,114 @@ import { getSeasonStats } from '../lib/stats/getStats';
 export default async function HomePage() {
   const [data, stats] = await Promise.all([getLeagueSnapshot(), getSeasonStats()]);
 
-  return (
-    <main>
-      {'unavailable' in data && data.unavailable ? (
+  if ('unavailable' in data && data.unavailable) {
+    return (
+      <main>
         <section className="card" style={{ marginTop: 14 }}>
           <h2>League Data Unavailable</h2>
           <p>{data.reason}</p>
           <p className="muted">Set Supabase env vars and ensure RLS/data access is configured.</p>
         </section>
-      ) : (
-        <>
-          <section className="hero">
-            <h2>{data.season?.name ?? 'Emerald Coast Roller League'}</h2>
-            <p className="muted">League HQ for schedule, standings, community chatter, trades, and DFS every week.</p>
-            <div className="form-actions" style={{ marginTop: 8 }}>
-              <Link className="header-auth-link" href="/schedule">View Schedule</Link>
-              <Link className="header-auth-link" href="/dfs">Open DFS</Link>
-              <Link className="header-auth-link" href="/chat">Join Community</Link>
+      </main>
+    );
+  }
+
+  const upcomingGames = data.schedule.filter((g) => new Date(g.scheduled_at).getTime() > Date.now()).slice(0, 5);
+  const recentFinals = data.schedule.filter((g) => g.status === 'FINAL').slice(-5).reverse();
+  const topLeaders = (stats.players ?? []).slice(0, 5);
+
+  return (
+    <main>
+      <section className="hero" style={{ marginBottom: 12 }}>
+        <h2>{data.season?.name ?? 'Emerald Coast Roller League'}</h2>
+        <p className="muted">A mobile-first league home for games, standings, DFS contests, community, and weekly betting lines.</p>
+        <div className="form-actions" style={{ marginTop: 8 }}>
+          <Link className="header-auth-link" href="/schedule">Today&apos;s Games</Link>
+          <Link className="header-auth-link" href="/dfs">Enter DFS Contest</Link>
+          <Link className="header-auth-link" href="/betting">View Weekly Lines</Link>
+          <Link className="header-auth-link" href="/chat">Community</Link>
+        </div>
+      </section>
+
+      <div className="grid">
+        <section className="card">
+          <h3 className="card-title">Next DFS Slate</h3>
+          {data.nextSlate ? (
+            <div className="stack-list">
+              <p><strong>{data.nextSlate.name}</strong></p>
+              <p className="muted">Locks: {new Date(data.nextSlate.lock_at).toLocaleString()}</p>
+              <p className="muted">Games: {data.nextSlate.games.length}</p>
+              <p className="muted">Contest: {data.nextSlate.contest?.name ?? 'Contest not posted yet'}</p>
             </div>
-          </section>
+          ) : (
+            <p className="muted">No upcoming DFS slate yet.</p>
+          )}
+        </section>
 
-          <div className="grid">
-            <section className="card">
-              <h3 className="card-title">Next Playable DFS Slate</h3>
-              {data.nextSlate ? (
-                <>
-                  <p><strong>{data.nextSlate.name}</strong></p>
-                  <p className="muted">Locks: {new Date(data.nextSlate.lock_at).toLocaleString()}</p>
-                  <p className="muted">Games: {data.nextSlate.games.length}</p>
-                  <p className="muted">Contest: {data.nextSlate.contest?.name ?? 'No contest yet'}</p>
-                </>
-              ) : (
-                <p className="muted">No slate generated yet. Admin can generate the next default slate from DFS admin controls.</p>
-              )}
-            </section>
-
-            <section className="card">
-              <h3 className="card-title">Upcoming Games</h3>
-              {data.schedule.filter((g) => new Date(g.scheduled_at).getTime() > Date.now()).slice(0, 4).map((g) => (
-                <p key={g.id}>
-                  <strong>{g.home_team_name}</strong> vs <strong>{g.away_team_name}</strong><br />
-                  <span className="muted">{new Date(g.scheduled_at).toLocaleString()} · {g.location ?? 'TBD'}</span>
-                </p>
-              ))}
-            </section>
-
-            <section className="card">
-              <h3 className="card-title">Recent Scores</h3>
-              {data.schedule.filter((g) => g.status === 'FINAL').slice(-4).reverse().map((g) => (
-                <p key={g.id}>{g.home_team_name} {g.home_score} - {g.away_score} {g.away_team_name}</p>
-              ))}
-              {data.schedule.filter((g) => g.status === 'FINAL').length === 0 && <p className="muted">No final scores yet.</p>}
-            </section>
-
-            <section className="card">
-              <h3 className="card-title">Standings Snapshot</h3>
-              <table className="table">
-                <thead><tr><th>Team</th><th>GP</th><th>W</th><th>L</th><th>PTS</th></tr></thead>
-                <tbody>
-                  {data.standings.slice(0, 6).map((s) => <tr key={s.team}><td>{s.team}</td><td>{s.gp}</td><td>{s.w}</td><td>{s.l}</td><td>{s.pts}</td></tr>)}
-                </tbody>
-              </table>
-            </section>
-
-            <section className="card">
-              <h3 className="card-title">Stat Leaders</h3>
-              <table className="table">
-                <thead><tr><th>Player</th><th>Team</th><th>P</th></tr></thead>
-                <tbody>
-                  {(stats.players ?? []).slice(0, 6).map((p: any) => (
-                    <tr key={p.player_id}><td>{p.name}</td><td>{p.team_name}</td><td>{p.points}</td></tr>
-                  ))}
-                </tbody>
-              </table>
-            </section>
-
-            <section className="card">
-              <h3 className="card-title">League News</h3>
-              {(data.chatMessages ?? []).slice(0, 4).map((m: any) => (
-                <p key={m.id}><span className="badge">{m.role}</span> {m.message}</p>
-              ))}
-              {(!data.chatMessages || data.chatMessages.length === 0) && <p className="muted">No messages yet. Kick things off in Community.</p>}
-            </section>
+        <section className="card">
+          <h3 className="card-title">Upcoming Games</h3>
+          <div className="stack-list">
+            {upcomingGames.map((g) => (
+              <article className="list-card" key={g.id}>
+                <p><strong>{g.away_team_name}</strong> @ <strong>{g.home_team_name}</strong></p>
+                <p className="muted">{new Date(g.scheduled_at).toLocaleString()} · {g.location ?? 'TBD'}</p>
+              </article>
+            ))}
+            {!upcomingGames.length && <p className="muted">No upcoming games listed.</p>}
           </div>
-        </>
-      )}
+        </section>
+
+        <section className="card">
+          <h3 className="card-title">Recent Results</h3>
+          <div className="stack-list">
+            {recentFinals.map((g) => (
+              <article className="list-card" key={g.id}>
+                <p><strong>{g.away_team_name} {g.away_score}</strong> · <strong>{g.home_team_name} {g.home_score}</strong></p>
+                <p className="muted">Final</p>
+              </article>
+            ))}
+            {!recentFinals.length && <p className="muted">No final scores yet.</p>}
+          </div>
+        </section>
+
+        <section className="card">
+          <h3 className="card-title">Standings Snapshot</h3>
+          <div className="stack-list">
+            {data.standings.slice(0, 6).map((s) => (
+              <article key={s.team} className="list-card compact">
+                <div><strong>{s.team}</strong></div>
+                <div className="muted">{s.w}-{s.l}-{s.t} · GP {s.gp} · PTS {s.pts}</div>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section className="card">
+          <h3 className="card-title">League Leaders</h3>
+          <div className="stack-list">
+            {topLeaders.map((p: any) => (
+              <article key={p.player_id} className="list-card compact">
+                <div><strong>{p.name}</strong> <span className="muted">({p.team_name})</span></div>
+                <div className="muted">Points: {p.points}</div>
+              </article>
+            ))}
+            {!topLeaders.length && <p className="muted">Stats will appear once games are recorded.</p>}
+          </div>
+        </section>
+
+        <section className="card">
+          <h3 className="card-title">Community Activity</h3>
+          <div className="stack-list">
+            {(data.chatMessages ?? []).slice(0, 4).map((m: any) => (
+              <article key={m.id} className="list-card compact">
+                <span className="badge">{m.role}</span>
+                <p style={{ margin: '6px 0 0' }}>{m.message}</p>
+              </article>
+            ))}
+            {(!data.chatMessages || data.chatMessages.length === 0) && <p className="muted">No messages yet. Kick off conversation in Community.</p>}
+          </div>
+        </section>
+      </div>
     </main>
   );
 }
