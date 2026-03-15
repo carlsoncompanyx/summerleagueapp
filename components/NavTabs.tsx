@@ -9,12 +9,11 @@ import {
   Flame,
   Home,
   MessageCircle,
-  Repeat,
   ShieldAlert,
   Trophy,
 } from 'lucide-react';
 
-import { canViewAdmin, canViewTrades } from '../lib/authz';
+import { canViewAdmin } from '../lib/authz';
 import { Role } from '../lib/types';
 
 const ITEMS = [
@@ -25,7 +24,6 @@ const ITEMS = [
   { label: 'DFS', href: '/dfs', testId: 'tab-dfs', icon: Flame },
   { label: 'Community', href: '/chat', testId: 'tab-chat', icon: MessageCircle },
   { label: 'Betting', href: '/betting', testId: 'tab-betting', icon: CircleDollarSign },
-  { label: 'Trades', href: '/trades', testId: 'tab-trades', icon: Repeat },
   { label: 'Admin', href: '/admin', testId: 'tab-admin', icon: ShieldAlert },
 ] as const;
 
@@ -34,7 +32,6 @@ export default function NavTabs({ role = 'ADMIN' }: { role?: Role }) {
 
   const filtered = ITEMS.filter((item) => {
     if (item.label === 'Admin') return canViewAdmin(role);
-    if (item.label === 'Trades') return canViewTrades(role);
     return true;
   });
 

@@ -35,3 +35,10 @@ Mobile-first Next.js + Supabase app focused on:
 ## Testing
 - Type-check: `npx tsc --noEmit`
 - E2E (optional): `npm run test:e2e`
+
+
+## Product notes
+- Public date/time display is standardized with a shared formatter (`America/Chicago`).
+- DFS auto-loads the next active contest (no public contest dropdown).
+- Goalie salary baseline is normalized for MVP slate pricing fairness.
+- Deprecated public routes: `/leaders` redirects to `/statistics`, `/wallet` redirects to `/betting`.

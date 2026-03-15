@@ -1,4 +1,5 @@
 import { getLeagueSnapshot } from '../../lib/league-data';
+import { formatPublicDateTime } from '../../lib/formatters';
 
 export default async function SchedulePage() {
   const data = await getLeagueSnapshot();
@@ -20,7 +21,7 @@ export default async function SchedulePage() {
           {upcoming.map((g) => (
             <article key={g.id} className="list-card">
               <p><strong>{g.away_team_name}</strong> @ <strong>{g.home_team_name}</strong></p>
-              <p className="muted">{new Date(g.scheduled_at).toLocaleString()}</p>
+              <p className="muted">{formatPublicDateTime(g.scheduled_at)}</p>
               <p className="muted">{g.location ?? 'TBD'} · {g.status}</p>
             </article>
           ))}
@@ -34,7 +35,7 @@ export default async function SchedulePage() {
           {completed.map((g) => (
             <article key={g.id} className="list-card">
               <p><strong>{g.away_team_name} {g.away_score}</strong> · <strong>{g.home_team_name} {g.home_score}</strong></p>
-              <p className="muted">{new Date(g.scheduled_at).toLocaleString()} · Final</p>
+              <p className="muted">{formatPublicDateTime(g.scheduled_at)} · Final</p>
             </article>
           ))}
           {!completed.length && <p className="muted">No final scores yet.</p>}

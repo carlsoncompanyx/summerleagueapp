@@ -466,3 +466,11 @@ summary,
   .tab-link { min-width: 74px; font-size: 0.56rem; }
   .logo-mark { width: 64px; height: 64px; }
 }
+
+
+.section-header-row { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; }
+.dfs-scroll-list { max-height: 55vh; overflow: auto; }
+
+@media (max-width: 900px) {
+  .section-header-row { flex-direction: column; align-items: stretch; }
+}

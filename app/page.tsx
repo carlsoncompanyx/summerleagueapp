@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { getLeagueSnapshot } from '../lib/league-data';
 import { getSeasonStats } from '../lib/stats/getStats';
+import { formatPublicDateTime } from '../lib/formatters';
 
 export default async function HomePage() {
   const [data, stats] = await Promise.all([getLeagueSnapshot(), getSeasonStats()]);
@@ -40,7 +41,7 @@ export default async function HomePage() {
           {data.nextSlate ? (
             <div className="stack-list">
               <p><strong>{data.nextSlate.name}</strong></p>
-              <p className="muted">Locks: {new Date(data.nextSlate.lock_at).toLocaleString()}</p>
+              <p className="muted">Locks: {formatPublicDateTime(data.nextSlate.lock_at)}</p>
               <p className="muted">Games: {data.nextSlate.games.length}</p>
               <p className="muted">Contest: {data.nextSlate.contest?.name ?? 'Contest not posted yet'}</p>
             </div>
@@ -55,7 +56,7 @@ export default async function HomePage() {
             {upcomingGames.map((g) => (
               <article className="list-card" key={g.id}>
                 <p><strong>{g.away_team_name}</strong> @ <strong>{g.home_team_name}</strong></p>
-                <p className="muted">{new Date(g.scheduled_at).toLocaleString()} · {g.location ?? 'TBD'}</p>
+                <p className="muted">{formatPublicDateTime(g.scheduled_at)} · {g.location ?? 'TBD'}</p>
               </article>
             ))}
             {!upcomingGames.length && <p className="muted">No upcoming games listed.</p>}

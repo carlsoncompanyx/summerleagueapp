@@ -72,7 +72,6 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               ) : (
                 <>
                   <Link className="header-auth-link" href="/login">Join / Login</Link>
-                  <Link className="header-auth-link" href="/login">Login</Link>
                 </>
               )}
             </div>

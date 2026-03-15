@@ -39,3 +39,9 @@ These routes are now deprecated for MVP clarity:
 ## Operational note
 
 Admin/testing convenience remains intact through existing test-mode behavior in API routes and layout session bootstrap.
+
+
+## Recent MVP schema actions
+- Added `game_betting_lines` for admin-controlled weekly game lines.
+- Added betting constraint migration to allow only game markets (`moneyline`, `spread`, `total`) for new writes.
+- Added goalie salary normalization migration for existing slates to avoid distorted cap dynamics.
