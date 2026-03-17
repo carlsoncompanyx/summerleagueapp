@@ -45,3 +45,5 @@ Admin/testing convenience remains intact through existing test-mode behavior in 
 - Added `game_betting_lines` for admin-controlled weekly game lines.
 - Added betting constraint migration to allow only game markets (`moneyline`, `spread`, `total`) for new writes.
 - Added goalie salary normalization migration for existing slates to avoid distorted cap dynamics.
+
+- Dropped unused legacy table `message_reports` via cleanup migration to reduce schema noise.

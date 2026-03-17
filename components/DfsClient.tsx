@@ -229,11 +229,17 @@ export default function DfsClient() {
 
       <section className="card" style={{ marginBottom: 12 }}>
         <h2 className="section-title">Leaderboard</h2>
-        <div className="stack-list">
+        <div className="desktop-only responsive-table">
+          <table className="table"><thead><tr><th>Rank</th><th>Entry</th><th>User</th><th>Points</th><th>Submitted</th></tr></thead><tbody>
+            {(data.leaderboardEntries ?? []).map((e: any, idx: number) => <tr key={e.id}><td>{e.rank ?? idx + 1}</td><td>{e.display_label || `Entry #${idx + 1}`}</td><td>{e.user_display}</td><td>{Number(e.actual_points || 0).toFixed(2)}</td><td>{formatPublicDateTime(e.created_at)}</td></tr>)}
+          </tbody></table>
+          {!data.leaderboardEntries?.length && <p className="muted">No entries yet for this contest.</p>}
+        </div>
+        <div className="mobile-only stack-list">
           {(data.leaderboardEntries ?? []).map((e: any, idx: number) => (
             <article key={e.id} className="list-card compact">
               <p><strong>#{e.rank ?? idx + 1}</strong> · {e.display_label || `Entry #${idx + 1}`}</p>
-              <p className="muted">{e.user_display} · Score {Number(e.actual_points || 0).toFixed(2)} · {formatPublicDateTime(e.created_at)}</p>
+              <p className="muted">{e.user_display} · {Number(e.actual_points || 0).toFixed(2)} pts</p>
             </article>
           ))}
           {!data.leaderboardEntries?.length && <p className="muted">No entries yet for this contest.</p>}
@@ -260,12 +266,17 @@ export default function DfsClient() {
 
       <section className="card">
         <h2 className="section-title">Games in This Slate</h2>
-        <div className="game-slate-list">
+        <div className="desktop-only responsive-table">
+          <table className="table"><thead><tr><th>Time</th><th>Matchup</th><th>Status</th><th>Score</th><th></th></tr></thead><tbody>
+            {(data.slateGames ?? []).map((g: any) => <tr key={g.id}><td>{formatPublicDateTime(g.scheduled_at)}</td><td>{g.away_team_name} @ {g.home_team_name}</td><td>{g.status}</td><td>{g.away_score} - {g.home_score}</td><td><button type="button" onClick={() => openGameStats(g)}>Stats</button></td></tr>)}
+          </tbody></table>
+          {!data.slateGames?.length && <p className="muted">No games attached to this slate.</p>}
+        </div>
+        <div className="mobile-only game-slate-list">
           {(data.slateGames ?? []).map((g: any) => (
             <article className="game-card" key={g.id}>
               <p><strong>{g.away_team_name}</strong> @ <strong>{g.home_team_name}</strong></p>
-              <p className="muted">{formatPublicDateTime(g.scheduled_at)} · {g.status}</p>
-              <p className="muted">Score: {g.away_score} - {g.home_score}</p>
+              <p className="muted">{formatPublicDateTime(g.scheduled_at)} · {g.status} · {g.away_score}-{g.home_score}</p>
               <button type="button" onClick={() => openGameStats(g)}>View Game Stats</button>
             </article>
           ))}
@@ -327,7 +338,7 @@ export default function DfsClient() {
                 return (
                   <article key={p.id} className={`list-card compact ${invalid ? 'dfs-row-muted' : ''}`}>
                     <p><strong>{p.player?.name}</strong> {used && <span className="badge">In {slotLabel(used)}</span>}</p>
-                    <p className="muted">{p.player?.team_name} · {p.player?.position || p.position} · ${p.salary} · Past FPPG {getPastFppg(p)?.toFixed(2) || '—'}</p>
+                    <p className="muted">{p.player?.team_name} · {p.player?.position || p.position} · ${activeSlot === 'CAPTAIN' ? Math.round(Number(p.salary || 0) * 1.5) : p.salary}{activeSlot === 'CAPTAIN' ? ' (Captain 1.5x)' : ''} · Past FPPG {getPastFppg(p)?.toFixed(2) || '—'}</p>
                     <button type="button" onClick={() => choosePlayer(p)} disabled={invalid}>Add</button>
                   </article>
                 );

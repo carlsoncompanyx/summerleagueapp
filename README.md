@@ -42,3 +42,6 @@ Mobile-first Next.js + Supabase app focused on:
 - DFS auto-loads the next active contest (no public contest dropdown).
 - Goalie salary baseline is normalized for MVP slate pricing fairness.
 - Deprecated public routes: `/leaders` redirects to `/statistics`, `/wallet` redirects to `/betting`.
+
+- Session-aware server auth now uses Supabase SSR helpers + middleware so server role checks (including Admin) use real signed-in sessions.
+- Public/Admin/DFS date-time display and slate-day grouping now consistently use league timezone (`America/Chicago`).
