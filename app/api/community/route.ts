@@ -4,7 +4,7 @@ import { createServerSupabaseClient } from '../../../lib/supabase/server';
 import { socialDisplayName } from '../../../lib/profiles/display';
 
 function testModeAdmin() {
-  return process.env.NEXT_PUBLIC_ADMIN_TEST_MODE === 'true' && (process.env.VERCEL_ENV ?? 'development') !== 'production';
+  return process.env.ADMIN_TEST_MODE === 'true' && (process.env.VERCEL_ENV ?? 'development') !== 'production';
 }
 
 async function currentUser() {

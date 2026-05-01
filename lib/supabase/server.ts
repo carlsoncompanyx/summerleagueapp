@@ -11,10 +11,10 @@ export function createServerSupabaseClient() {
       async getAll() {
         return (await cookieStore).getAll();
       },
-      async setAll(cookiesToSet) {
+      async setAll(cookiesToSet: any[]) {
         try {
           const store = await cookieStore;
-          cookiesToSet.forEach(({ name, value, options }) => store.set(name, value, options));
+          cookiesToSet.forEach(({ name, value, options }: any) => store.set(name, value, options));
         } catch {
           // Server Components may not allow setting cookies.
         }

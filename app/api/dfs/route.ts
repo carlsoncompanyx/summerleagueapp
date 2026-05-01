@@ -8,7 +8,7 @@ import { leagueDateKey } from '../../../lib/formatters';
 const REQUIRED_SLOTS = ['CAPTAIN', 'SKATER_1', 'SKATER_2', 'SKATER_3', 'SKATER_4', 'GOALIE'];
 
 function testModeAdmin() {
-  return process.env.NEXT_PUBLIC_ADMIN_TEST_MODE === 'true' && (process.env.VERCEL_ENV ?? 'development') !== 'production';
+  return process.env.ADMIN_TEST_MODE === 'true' && (process.env.VERCEL_ENV ?? 'development') !== 'production';
 }
 
 function isAdminRole(role: string | null | undefined) {

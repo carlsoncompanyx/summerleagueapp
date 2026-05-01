@@ -4,7 +4,7 @@ import { createAdminSupabaseClient } from '../../lib/supabase/admin';
 import { createServerSupabaseClient } from '../../lib/supabase/server';
 
 function testModeAdmin() {
-  return process.env.NEXT_PUBLIC_ADMIN_TEST_MODE === 'true' && (process.env.VERCEL_ENV ?? 'development') !== 'production';
+  return process.env.ADMIN_TEST_MODE === 'true' && (process.env.VERCEL_ENV ?? 'development') !== 'production';
 }
 
 export default async function AdminPage() {

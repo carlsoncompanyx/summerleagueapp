@@ -27,6 +27,7 @@ type Game = { id: string; season_id: string; home_team: string; away_team: strin
 type DashboardResponse = {
   role: Role;
   testMode: boolean;
+  currentSeasonId?: string | null;
   seasons: Season[];
   teams: Team[];
   players: Player[];
@@ -54,6 +55,7 @@ const TABS: { key: Tab; label: string }[] = [
   { key: 'seasons', label: 'Seasons' },
   { key: 'teams', label: 'Teams' },
   { key: 'players', label: 'Players' },
+  { key: 'registrations', label: 'Registrations' },
   { key: 'games', label: 'Games & Schedule' },
   { key: 'scores', label: 'Scores' },
   { key: 'trades', label: 'Trades' },
@@ -168,6 +170,7 @@ export default function AdminClient() {
       setRegistrations(data.registrations ?? []);
       setGames(data.games ?? []);
       setTrades(data.trades ?? []);
+      if ((data as any).currentSeasonId) setSeasonFilter((data as any).currentSeasonId);
     } catch (e: any) {
       setError(e?.message ?? 'Unable to load dashboard');
     } finally {

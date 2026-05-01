@@ -16,7 +16,7 @@ const logoSrc =
   'https://fsmbogksjimrmfjzxrlx.supabase.co/storage/v1/object/public/images/ecrl%20logo.PNG';
 
 async function getHeaderSession() {
-  if (process.env.NEXT_PUBLIC_ADMIN_TEST_MODE === 'true' && (process.env.VERCEL_ENV ?? 'development') !== 'production') {
+  if (process.env.ADMIN_TEST_MODE === 'true' && (process.env.VERCEL_ENV ?? 'development') !== 'production') {
     const admin = createAdminSupabaseClient();
     const { data: profile } = await admin
       .from('profiles')
