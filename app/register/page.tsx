@@ -53,7 +53,7 @@ export default function RegisterPage() {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange((_event: any, session: any) => {
       if (!mounted) return;
       setSessionUserId(session?.user?.id ?? null);
     });

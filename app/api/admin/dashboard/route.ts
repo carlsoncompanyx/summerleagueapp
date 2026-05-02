@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { createAdminSupabaseClient } from '../../../../lib/supabase/admin';
 import { createServerSupabaseClient } from '../../../../lib/supabase/server';
+import { resolveCurrentSeason } from '../../../../lib/seasons/current';
 
 function isAdminTestModeEnabled() {
-  const flag = process.env.NEXT_PUBLIC_ADMIN_TEST_MODE === 'true';
+  const flag = process.env.ADMIN_TEST_MODE === 'true';
   const env = process.env.VERCEL_ENV ?? 'development';
   return flag && env !== 'production';
 }
@@ -48,6 +49,9 @@ async function validateTeamSeason(admin: any, season_id: string | null | undefin
 export async function GET() {
   const admin = createAdminSupabaseClient();
   const me = await getCurrentRole();
+  if (me.role !== 'ADMIN') {
+    return NextResponse.json({ ok: false, error: 'Admin access required.' }, { status: 403 });
+  }
 
   const [seasons, teams, players, registrations, games, trades, gameStats, profiles] =
     await Promise.all([
@@ -61,10 +65,13 @@ export async function GET() {
       admin.from('profiles').select('user_id, first_name, last_name, display_name, role, team_id').order('created_at'),
     ]);
 
+  const resolved = resolveCurrentSeason((seasons.data ?? []) as any[]);
+
   return NextResponse.json({
     role: me.role,
     userId: me.userId,
     testMode: isAdminTestModeEnabled(),
+    currentSeasonId: resolved.season?.id ?? null,
     seasons: seasons.data ?? [],
     teams: teams.data ?? [],
     players: players.data ?? [],
@@ -275,9 +282,11 @@ export async function POST(req: NextRequest) {
       if (error) throw error;
     } else if (action === 'import_players_csv') {
       const rows = payload.rows as any[];
-      const { data: seasons } = await admin.from('seasons').select('id,name');
+      const dryRun = Boolean(payload.dry_run);
+      const { data: seasons } = await admin.from('seasons').select('id,name,start_date,end_date,registration_open_at,registration_close_at');
       const { data: teams } = await admin.from('teams').select('id,name,season_id');
 
+      const defaultSeasonId = payload.target_season_id || resolveCurrentSeason((seasons ?? []) as any[]).season?.id || null;
       const seasonNameToId = new Map<string, string>();
       (seasons ?? []).forEach((s: any) => seasonNameToId.set(String(s.name).toLowerCase(), s.id));
       const teamNameBySeason = new Map<string, string>();
@@ -287,18 +296,20 @@ export async function POST(req: NextRequest) {
       const rowErrors: string[] = [];
 
       rows.forEach((row, i) => {
-        const seasonId = row.season_id || seasonNameToId.get(String(row.season_name || '').toLowerCase());
-        const teamId = row.team_id || teamNameBySeason.get(`${seasonId}:${String(row.team_name || '').toLowerCase()}`);
+        const name = row.name || row.player_name || row.full_name || [row.first_name,row.last_name].filter(Boolean).join(' ').trim();
+        const seasonId = row.season_id || seasonNameToId.get(String(row.season_name || '').toLowerCase()) || defaultSeasonId;
+        const teamLabel = row.team || row.team_name || '';
+        const teamId = row.team_id || teamNameBySeason.get(`${seasonId}:${String(teamLabel).toLowerCase()}`);
 
         if (!seasonId) {
           rowErrors.push(`Row ${i + 1}: season could not be resolved.`);
           return;
         }
-        if ((row.team_name || row.team_id) && !teamId) {
-          rowErrors.push(`Row ${i + 1}: team '${row.team_name || row.team_id || ''}' could not be resolved in selected season.`);
+        if ((teamLabel || row.team_id) && !teamId) {
+          rowErrors.push(`Row ${i + 1}: team '${teamLabel || row.team_id || ''}' could not be resolved in selected season.`);
           return;
         }
-        if (!row.name && !row.display_name) {
+        if (!name && !row.display_name) {
           rowErrors.push(`Row ${i + 1}: player name is required.`);
           return;
         }
@@ -307,7 +318,7 @@ export async function POST(req: NextRequest) {
           season_id: seasonId,
           team_id: teamId || null,
           user_id: row.user_id || null,
-          name: row.name || row.display_name,
+          name: name || row.display_name,
           jersey: row.jersey_number ? Number(row.jersey_number) : row.jersey ? Number(row.jersey) : null,
           position: row.position || null,
         });
@@ -317,13 +328,19 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'CSV validation failed', rowErrors }, { status: 400 });
       }
 
+      if (dryRun) {
+        return NextResponse.json({ ok: true, dryRun: true, counts: { inserted: mapped.length, updated: 0, skipped: 0, errors: rowErrors.length } });
+      }
       const { error } = await admin.from('players').insert(mapped);
       if (error) throw error;
+      return NextResponse.json({ ok: true, counts: { inserted: mapped.length, updated: 0, skipped: 0, errors: 0 } });
     } else if (action === 'import_games_csv') {
       const rows = payload.rows as any[];
-      const { data: seasons } = await admin.from('seasons').select('id,name');
+      const dryRun = Boolean(payload.dry_run);
+      const { data: seasons } = await admin.from('seasons').select('id,name,start_date,end_date,registration_open_at,registration_close_at');
       const { data: teams } = await admin.from('teams').select('id,name,season_id');
 
+      const defaultSeasonId = payload.target_season_id || resolveCurrentSeason((seasons ?? []) as any[]).season?.id || null;
       const seasonNameToId = new Map<string, string>();
       (seasons ?? []).forEach((s: any) => seasonNameToId.set(String(s.name).toLowerCase(), s.id));
       const teamBySeasonName = new Map<string, string>();
@@ -332,14 +349,20 @@ export async function POST(req: NextRequest) {
       const mapped: any[] = [];
       const rowErrors: string[] = [];
       rows.forEach((row, i) => {
-        const seasonId = row.season_id || seasonNameToId.get(String(row.season_name || '').toLowerCase());
-        const homeTeam = row.home_team || teamBySeasonName.get(`${seasonId}:${String(row.home_team_name || '').toLowerCase()}`);
-        const awayTeam = row.away_team || teamBySeasonName.get(`${seasonId}:${String(row.away_team_name || '').toLowerCase()}`);
+        const seasonId = row.season_id || seasonNameToId.get(String(row.season_name || '').toLowerCase()) || defaultSeasonId;
+        const homeLabel = row.home_team || row.home_team_name || row.home || '';
+        const awayLabel = row.away_team || row.away_team_name || row.away || '';
+        const homeTeam = row.home_team_id || teamBySeasonName.get(`${seasonId}:${String(homeLabel).toLowerCase()}`);
+        const awayTeam = row.away_team_id || teamBySeasonName.get(`${seasonId}:${String(awayLabel).toLowerCase()}`);
         if (!seasonId || !homeTeam || !awayTeam) {
           rowErrors.push(`Row ${i + 1}: could not resolve season/home/away team.`);
           return;
         }
-        const scheduled = toIso(row.scheduled_at);
+        if (homeTeam === awayTeam) {
+          rowErrors.push(`Row ${i + 1}: home and away team cannot match.`);
+          return;
+        }
+        const scheduled = toIso(row.scheduled_at || `${row.date || ''} ${row.time || ''}`.trim());
         if (!scheduled) {
           rowErrors.push(`Row ${i + 1}: invalid scheduled_at.`);
           return;
@@ -358,8 +381,12 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'CSV validation failed', rowErrors }, { status: 400 });
       }
 
+      if (dryRun) {
+        return NextResponse.json({ ok: true, dryRun: true, counts: { inserted: mapped.length, updated: 0, skipped: 0, errors: rowErrors.length } });
+      }
       const { error } = await admin.from('games').insert(mapped);
       if (error) throw error;
+      return NextResponse.json({ ok: true, counts: { inserted: mapped.length, updated: 0, skipped: 0, errors: 0 } });
     }
 
     return NextResponse.json({ ok: true });

@@ -264,7 +264,7 @@ summary,
     align-items: center;
   }
 
-  .fhttps://github.com/carlsoncompanyx/summerleagueapp/pull/5/conflict?name=app%252Fregister%252Fpage.tsx&base_oid=97cea9c77efd23602908dfb9248885e184da2e15&head_oid=5155af4e3f7f05533721ccb522f919dc2f702b3aorm-grid {
+  .form-grid {
     grid-template-columns: 1fr;
   }
 
@@ -422,3 +422,73 @@ summary,
     align-items: stretch;
   }
 }
+
+
+.responsive-table { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.game-slate-list, .betting-grid { display: grid; gap: 10px; }
+.game-card, .betting-card { border: 1px solid #d8e1e8; border-radius: 12px; padding: 12px; background: #fff; }
+.bet-line-row { display: flex; justify-content: space-between; gap: 8px; margin-top: 6px; }
+.dfs-builder-modal { width: min(760px, 100%); }
+.chat-stream { display: grid; gap: 8px; max-height: 55vh; overflow: auto; margin-bottom: 10px; }
+.chat-message { border: 1px solid #d8e1e8; border-radius: 10px; padding: 10px; background: #f9fcff; }
+.chat-message p { margin: 6px 0 0; }
+.chat-compose { display: grid; gap: 8px; }
+.forum-layout { display: grid; grid-template-columns: minmax(0,0.95fr) minmax(0,1.05fr); gap: 12px; }
+.forum-compose, .forum-thread-list { display: grid; gap: 8px; margin-bottom: 10px; }
+.forum-thread-card { text-align: left; background: #fff; border: 1px solid #d8e1e8; color: #173249; }
+.forum-active-thread { border: 1px solid #d8e1e8; border-radius: 12px; padding: 12px; display: grid; gap: 8px; }
+@media (max-width: 900px) {
+  .modal-overlay { padding: 0; align-items: stretch; }
+  .modal-card, .dfs-builder-modal { width: 100%; min-height: 100vh; border-radius: 0; }
+  .dfs-pool-controls { flex-direction: column; }
+  .forum-layout { grid-template-columns: 1fr; }
+  .bet-line-row { flex-direction: column; }
+}
+
+
+.stack-list { display: grid; gap: 8px; }
+.list-card { border: 1px solid #d8e1e8; border-radius: 12px; padding: 10px 12px; background: #fff; }
+.list-card.compact { padding: 8px 10px; }
+.standings-card { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+.standings-metrics { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+
+.tabs { gap: 8px; }
+.tab-link { min-width: 66px; font-size: 0.58rem; padding: 6px 8px; }
+.tab-link span { white-space: nowrap; }
+
+.hero .form-actions .header-auth-link { text-align: center; }
+
+@media (max-width: 900px) {
+  main { padding: 14px 12px 18px; }
+  .card, .hero { padding: 12px; border-radius: 12px; }
+  h1 { margin-bottom: 10px; }
+  .tabs { padding-bottom: 4px; }
+  .tab-link { min-width: 74px; font-size: 0.56rem; }
+  .logo-mark { width: 64px; height: 64px; }
+}
+
+
+.section-header-row { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; }
+.dfs-scroll-list { max-height: 55vh; overflow: auto; }
+
+@media (max-width: 900px) {
+  .section-header-row { flex-direction: column; align-items: stretch; }
+}
+
+
+.desktop-only { display: block; }
+.mobile-only { display: none; }
+@media (max-width: 900px) { .desktop-only { display: none; } .mobile-only { display: block; } }
+
+.admin-modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:flex-start;justify-content:center;padding:20px;z-index:1000}
+.admin-modal{background:#111827;color:#f9fafb;border:1px solid #374151;border-radius:12px;max-width:960px;width:100%;max-height:90vh;overflow:auto}
+.admin-modal-header,.admin-modal-footer{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid #374151}
+.admin-modal-footer{border-bottom:none;border-top:1px solid #374151}
+.admin-modal-body{padding:14px 16px}
+.button-row{display:flex;gap:8px;flex-wrap:wrap}
+button{cursor:pointer}
+button:hover{filter:brightness(1.08)}
+button:focus-visible{outline:2px solid #60a5fa;outline-offset:2px}
+.responsive-table{overflow-x:auto}
+.form-grid{display:grid;gap:10px;grid-template-columns:repeat(2,minmax(0,1fr))}
+@media (max-width:700px){.form-grid{grid-template-columns:1fr}.admin-modal-backdrop{padding:8px}.admin-modal{max-height:95vh}}

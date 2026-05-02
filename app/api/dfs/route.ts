@@ -3,11 +3,12 @@ import { createAdminSupabaseClient } from '../../../lib/supabase/admin';
 import { createServerSupabaseClient } from '../../../lib/supabase/server';
 import { buildSlateValuations, getFantasyPlayerDetails } from '../../../lib/dfs/valuation';
 import { computeDfsFantasyPoints, DFS_CAPTAIN_MULTIPLIER, parseDfsPosition } from '../../../lib/dfs/scoring';
+import { leagueDateKey } from '../../../lib/formatters';
 
 const REQUIRED_SLOTS = ['CAPTAIN', 'SKATER_1', 'SKATER_2', 'SKATER_3', 'SKATER_4', 'GOALIE'];
 
 function testModeAdmin() {
-  return process.env.NEXT_PUBLIC_ADMIN_TEST_MODE === 'true' && (process.env.VERCEL_ENV ?? 'development') !== 'production';
+  return process.env.ADMIN_TEST_MODE === 'true' && (process.env.VERCEL_ENV ?? 'development') !== 'production';
 }
 
 function isAdminRole(role: string | null | undefined) {
@@ -269,20 +270,18 @@ export async function POST(req: NextRequest) {
       if (nextGameErr) throw nextGameErr;
       if (!nextGame) return NextResponse.json({ error: 'No upcoming games found.' }, { status: 400 });
 
-      const gameDate = String(nextGame.scheduled_at).slice(0, 10);
-      const dayStartIso = `${gameDate}T00:00:00.000Z`;
-      const dayEnd = new Date(`${gameDate}T00:00:00.000Z`);
-      dayEnd.setUTCDate(dayEnd.getUTCDate() + 1);
+      const gameDate = leagueDateKey(nextGame.scheduled_at);
+      if (!gameDate) return NextResponse.json({ error: 'Invalid next game date.' }, { status: 400 });
 
-      const { data: dayGames, error: dayGamesErr } = await admin
+      const { data: futureGames, error: dayGamesErr } = await admin
         .from('games')
         .select('id,season_id,scheduled_at')
-        .gte('scheduled_at', dayStartIso)
-        .lt('scheduled_at', dayEnd.toISOString())
+        .gte('scheduled_at', nowIso)
         .eq('season_id', nextGame.season_id)
         .order('scheduled_at', { ascending: true });
       if (dayGamesErr) throw dayGamesErr;
-      if (!dayGames?.length) return NextResponse.json({ error: 'No games found for next slate day.' }, { status: 400 });
+      const dayGames = (futureGames ?? []).filter((g: any) => leagueDateKey(g.scheduled_at) === gameDate);
+      if (!dayGames.length) return NextResponse.json({ error: 'No games found for next slate day.' }, { status: 400 });
 
       const firstGameStart = dayGames[0].scheduled_at;
       const gameIds = dayGames.map((g: any) => g.id);
