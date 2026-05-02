@@ -8,6 +8,9 @@ import { Role } from '../lib/types';
 import { normalizeRole } from '../lib/roles';
 import { socialDisplayName } from '../lib/profiles/display';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export const metadata = {
   title: 'Emerald Coast Roller League',
   description: 'ECRL PWA MVP'

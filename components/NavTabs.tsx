@@ -2,6 +2,8 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { normalizeRole } from '../lib/roles';
 import {
   BarChart2,
   Calendar,
@@ -29,9 +31,29 @@ const ITEMS = [
 
 export default function NavTabs({ role = 'FAN' }: { role?: Role | string }) {
   const pathname = usePathname();
+  const [clientRole, setClientRole] = useState<string>(normalizeRole(role));
+
+  useEffect(() => {
+    let live = true;
+    fetch('/api/me', { cache: 'no-store' })
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`me ${res.status}`);
+        const me = await res.json();
+        if (!live) return;
+        if (me?.authenticated) {
+          const nextRole = normalizeRole(me?.normalizedRole || me?.rawRole || role);
+          setClientRole(nextRole);
+          if (process.env.NODE_ENV !== 'production') console.info('[NavTabs] role sync', { initialRole: role, meRole: nextRole, isAdmin: me?.isAdmin });
+        }
+      })
+      .catch((err) => {
+        if (process.env.NODE_ENV !== 'production') console.warn('[NavTabs] /api/me failed', err);
+      });
+    return () => { live = false; };
+  }, [role]);
 
   const filtered = ITEMS.filter((item) => {
-    if (item.label === 'Admin') return canViewAdmin(role);
+    if (item.label === 'Admin') return canViewAdmin(clientRole);
     return true;
   });
 

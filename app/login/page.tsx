@@ -28,11 +28,11 @@ export default function LoginPage() {
       });
       if (signInError) throw signInError;
       const meRes = await fetch('/api/me', { cache: 'no-store' });
-      const me = await meRes.json();
+      const me = meRes.ok ? await meRes.json() : null;
       setSuccess('Logged in successfully.');
       router.refresh();
-      if (me?.isAdmin) router.push('/admin');
-      else router.push('/');
+      if (me?.isAdmin === true) window.location.assign('/admin');
+      else window.location.assign('/');
     } catch (e: any) {
       setError(e?.message ?? 'Unable to log in.');
     } finally {
