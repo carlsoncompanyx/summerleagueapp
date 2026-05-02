@@ -1,0 +1,4 @@
+'use client';
+import { parseCsv } from '../../lib/csv/parse';
+import { useState } from 'react';
+export default function CsvImportModal({kind,seasons,targetSeason,setTargetSeason,onSubmit}:any){const [rows,setRows]=useState<any[]>([]);return <div><label>Target Season</label><select value={targetSeason} onChange={e=>setTargetSeason(e.target.value)}>{seasons.map((s:any)=><option key={s.id} value={s.id}>{s.name}</option>)}</select><input type='file' accept='.csv' onChange={async e=>{const file=e.target.files?.[0]; if(!file)return; const {headers,rows}=parseCsv(await file.text()); const norm=headers.map(h=>h.trim().toLowerCase()); setRows(rows.map(r=>Object.fromEntries(r.map((v,i)=>[norm[i],v]))));}}/><p>Preview rows: {rows.length}</p><div className='button-row'><button onClick={()=>onSubmit(kind,rows,targetSeason,true)}>Dry Run</button><button onClick={()=>onSubmit(kind,rows,targetSeason,false)}>Import</button></div></div>}

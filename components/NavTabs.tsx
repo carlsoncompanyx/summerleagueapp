@@ -22,12 +22,12 @@ const ITEMS = [
   { label: 'Standings', href: '/standings', testId: 'tab-standings', icon: Trophy },
   { label: 'Statistics', href: '/statistics', testId: 'tab-statistics', icon: BarChart2 },
   { label: 'DFS', href: '/dfs', testId: 'tab-dfs', icon: Flame },
-  { label: 'Community', href: '/chat', testId: 'tab-chat', icon: MessageCircle },
+  { label: 'Chat', href: '/chat', testId: 'tab-chat', icon: MessageCircle },
   { label: 'Betting', href: '/betting', testId: 'tab-betting', icon: CircleDollarSign },
   { label: 'Admin', href: '/admin', testId: 'tab-admin', icon: ShieldAlert },
 ] as const;
 
-export default function NavTabs({ role = 'ADMIN' }: { role?: Role }) {
+export default function NavTabs({ role = 'FAN' }: { role?: Role | string }) {
   const pathname = usePathname();
 
   const filtered = ITEMS.filter((item) => {

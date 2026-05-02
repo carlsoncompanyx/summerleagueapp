@@ -1,6 +1,6 @@
-import { Role } from './types';
+import { isAdminRole, isCaptainRole } from './roles';
 
-export const canViewTrades = (role: Role) => role === 'ADMIN' || role === 'CAPTAIN';
-export const canViewAdmin = (role: Role) => role === 'ADMIN';
-export const canEnterScores = (role: Role) => role === 'ADMIN';
-export const canFanChatPost = (role: Role) => role !== 'FAN' || true;
+export const canViewTrades = (role: string | null | undefined) => isAdminRole(role) || isCaptainRole(role);
+export const canViewAdmin = (role: string | null | undefined) => isAdminRole(role);
+export const canEnterScores = (role: string | null | undefined) => isAdminRole(role);
+export const canFanChatPost = (_role: string | null | undefined) => true;

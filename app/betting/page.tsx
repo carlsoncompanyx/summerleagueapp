@@ -10,7 +10,7 @@ function adminClientSafe() {
 
 export default async function BettingPage() {
   const data = await getLeagueSnapshot();
-  if ('unavailable' in data && data.unavailable) return <main><h1>Betting</h1><p>{data.reason}</p></main>;
+  if ('unavailable' in data && data.unavailable) return <main><h1>Weekly Lines & Picks</h1><p>{data.reason}</p></main>;
 
   const now = Date.now();
   const upcoming = data.schedule.filter((g) => new Date(g.scheduled_at).getTime() > now).slice(0, 12);
@@ -31,10 +31,10 @@ export default async function BettingPage() {
 
   return (
     <main>
-      <h1>Betting</h1>
+      <h1>Weekly Lines & Picks</h1>
       <section className="card" style={{ marginBottom: 12 }}>
-        <h2 className="section-title">Weekly Game Markets</h2>
-        <p className="muted">Moneyline, spread, and total for upcoming league games. Admin lines override model defaults.</p>
+        <h2 className="section-title">Weekly Game Markets (Picks Only)</h2>
+        <p className="muted">Moneyline, spread, and totals for upcoming games. Admin lines override model defaults when published.</p><p className='badge'>Bet slip coming soon — picks view only for now.</p><p className='muted'>Upcoming markets: {upcoming.length} · Next game: {upcoming[0] ? formatPublicDateTime(upcoming[0].scheduled_at) : 'TBD'}</p>
       </section>
 
       <section className="card">
@@ -52,13 +52,14 @@ export default async function BettingPage() {
               homeAvgAgainst: home.gp ? home.ga / home.gp : 4.1,
               awayAvgAgainst: away.gp ? away.ga / away.gp : 4.1,
             });
-            const line = lineByGame.get(g.id) || generated;
+            const adminLine = lineByGame.get(g.id);
+            const line = adminLine || generated;
 
             return (
               <article key={g.id} className="betting-card">
                 <h3>{g.away_team_name} @ {g.home_team_name}</h3>
-                <p className="muted">{formatPublicDateTime(g.scheduled_at)} · {g.status}</p>
-                <p className="muted">Score: {g.away_score} - {g.home_score}</p>
+                <p className="muted">Puck drop: {formatPublicDateTime(g.scheduled_at)} · {g.status}</p><p className='muted'>{g.away_team_name} ({away.pts} pts) at {g.home_team_name} ({home.pts} pts) <span className='badge'>{adminLine ? 'Admin line' : 'Model line'}</span></p>
+                {['FINAL','LIVE'].includes(String(g.status||'')) ? <p className="muted">Score: {g.away_score} - {g.home_score}</p> : null}
                 <div className="bet-line-row"><span>Moneyline</span><strong>{g.away_team_name} {line.away_moneyline} / {g.home_team_name} {line.home_moneyline}</strong></div>
                 <div className="bet-line-row"><span>Spread</span><strong>{g.away_team_name} {line.away_spread > 0 ? `+${line.away_spread}` : line.away_spread} / {g.home_team_name} {line.home_spread > 0 ? `+${line.home_spread}` : line.home_spread}</strong></div>
                 <div className="bet-line-row"><span>Total</span><strong>O/U {line.total}</strong></div>

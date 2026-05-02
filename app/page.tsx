@@ -102,7 +102,7 @@ export default async function HomePage() {
         </section>
 
         <section className="card">
-          <h3 className="card-title">Community Activity</h3>
+          <h3 className="card-title">Chat Activity</h3>
           <div className="stack-list">
             {(data.chatMessages ?? []).slice(0, 4).map((m: any) => (
               <article key={m.id} className="list-card compact">
@@ -110,7 +110,7 @@ export default async function HomePage() {
                 <p style={{ margin: '6px 0 0' }}>{m.message}</p>
               </article>
             ))}
-            {(!data.chatMessages || data.chatMessages.length === 0) && <p className="muted">No messages yet. Kick off conversation in Community.</p>}
+            {(!data.chatMessages || data.chatMessages.length === 0) && <p className="muted">No messages yet. Start the chat.</p>}
           </div>
         </section>
       </div>
