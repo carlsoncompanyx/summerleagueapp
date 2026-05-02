@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { parseCsv } from '../lib/csv/parse';
+import { formatPublicDateTime, fromLeagueDateTimeInput, toLeagueDateTimeInput } from '../lib/formatters';
 
 type Role = 'FAN' | 'PLAYER' | 'CAPTAIN' | 'ADMIN';
 type Tab = 'dashboard' | 'seasons' | 'teams' | 'players' | 'registrations' | 'games' | 'scores' | 'trades' | 'dfs';
@@ -26,6 +27,7 @@ type Game = { id: string; season_id: string; home_team: string; away_team: strin
 type DashboardResponse = {
   role: Role;
   testMode: boolean;
+  currentSeasonId?: string | null;
   seasons: Season[];
   teams: Team[];
   players: Player[];
@@ -53,27 +55,13 @@ const TABS: { key: Tab; label: string }[] = [
   { key: 'seasons', label: 'Seasons' },
   { key: 'teams', label: 'Teams' },
   { key: 'players', label: 'Players' },
+  { key: 'registrations', label: 'Registrations' },
   { key: 'games', label: 'Games & Schedule' },
   { key: 'scores', label: 'Scores' },
   { key: 'trades', label: 'Trades' },
   { key: 'dfs', label: 'DFS' },
 ];
 
-
-function toLocalDateTimeInput(value?: string | null) {
-  if (!value) return '';
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return '';
-  const offset = d.getTimezoneOffset();
-  const local = new Date(d.getTime() - offset * 60000);
-  return local.toISOString().slice(0, 16);
-}
-
-function fromLocalDateTimeInput(value?: string | null) {
-  if (!value) return null;
-  const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? null : d.toISOString();
-}
 
 export default function AdminClient() {
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
@@ -182,6 +170,7 @@ export default function AdminClient() {
       setRegistrations(data.registrations ?? []);
       setGames(data.games ?? []);
       setTrades(data.trades ?? []);
+      if ((data as any).currentSeasonId) setSeasonFilter((data as any).currentSeasonId);
     } catch (e: any) {
       setError(e?.message ?? 'Unable to load dashboard');
     } finally {
@@ -338,9 +327,9 @@ export default function AdminClient() {
             <div className="form-field col-6"><label>Registration Closes At</label><input type="datetime-local" value={seasonForm.registration_close_at} onChange={(e) => setSeasonForm((s) => ({ ...s, registration_close_at: e.target.value }))} /></div>
             <div className="form-field col-12"><label>Waiver Text</label><textarea value={seasonForm.waiver_text} onChange={(e) => setSeasonForm((s) => ({ ...s, waiver_text: e.target.value }))} /></div>
             <div className="form-field col-12"><label>Rules</label><textarea value={seasonForm.rules} onChange={(e) => setSeasonForm((s) => ({ ...s, rules: e.target.value }))} /></div>
-            <div className="form-actions"><button disabled={!canAdmin || busy} onClick={() => saveAndReload(seasonForm.id ? 'season_update' : 'season_create', { ...seasonForm, registration_open_at: fromLocalDateTimeInput(seasonForm.registration_open_at), registration_close_at: fromLocalDateTimeInput(seasonForm.registration_close_at) })}>{seasonForm.id ? 'Update Season' : 'Create Season'}</button></div>
+            <div className="form-actions"><button disabled={!canAdmin || busy} onClick={() => saveAndReload(seasonForm.id ? 'season_update' : 'season_create', { ...seasonForm, registration_open_at: fromLeagueDateTimeInput(seasonForm.registration_open_at), registration_close_at: fromLeagueDateTimeInput(seasonForm.registration_close_at) })}>{seasonForm.id ? 'Update Season' : 'Create Season'}</button></div>
           </div>
-          <table className="table"><thead><tr><th>Name</th><th>Dates</th><th>Registration Window</th><th>Actions</th></tr></thead><tbody>{seasons.map((s) => <tr key={s.id}><td>{s.name}</td><td>{s.start_date} → {s.end_date}</td><td>{s.registration_open_at ?? '-'} → {s.registration_close_at ?? '-'}</td><td><button onClick={() => setSeasonForm({ id: s.id, name: s.name, start_date: String(s.start_date).slice(0, 10), end_date: String(s.end_date).slice(0, 10), registration_open_at: toLocalDateTimeInput(s.registration_open_at), registration_close_at: toLocalDateTimeInput(s.registration_close_at), waiver_text: s.waiver_text ?? '', rules: s.rules ?? '' })}>Edit</button> <button disabled={!canAdmin} onClick={() => confirm('Delete season?') && saveAndReload('season_delete', { id: s.id })}>Delete</button></td></tr>)}</tbody></table>
+          <table className="table"><thead><tr><th>Name</th><th>Dates</th><th>Registration Window</th><th>Actions</th></tr></thead><tbody>{seasons.map((s) => <tr key={s.id}><td>{s.name}</td><td>{s.start_date} → {s.end_date}</td><td>{s.registration_open_at ?? '-'} → {s.registration_close_at ?? '-'}</td><td><button onClick={() => setSeasonForm({ id: s.id, name: s.name, start_date: String(s.start_date).slice(0, 10), end_date: String(s.end_date).slice(0, 10), registration_open_at: toLeagueDateTimeInput(s.registration_open_at), registration_close_at: toLeagueDateTimeInput(s.registration_close_at), waiver_text: s.waiver_text ?? '', rules: s.rules ?? '' })}>Edit</button> <button disabled={!canAdmin} onClick={() => confirm('Delete season?') && saveAndReload('season_delete', { id: s.id })}>Delete</button></td></tr>)}</tbody></table>
         </section>
       )}
 
@@ -405,9 +394,9 @@ export default function AdminClient() {
             <div className="form-field col-6"><label>Scheduled At</label><input type="datetime-local" value={gameForm.scheduled_at} onChange={(e) => setGameForm((g) => ({ ...g, scheduled_at: e.target.value }))} /></div>
             <div className="form-field col-6"><label>Location</label><input value={gameForm.location} onChange={(e) => setGameForm((g) => ({ ...g, location: e.target.value }))} /></div>
             <div className="form-field col-6"><label>Status</label><select value={gameForm.status} onChange={(e) => setGameForm((g) => ({ ...g, status: e.target.value }))}><option>SCHEDULED</option><option>LIVE</option><option>FINAL</option><option>CANCELED</option></select></div>
-            <div className="form-actions"><button disabled={!canAdmin || busy} onClick={() => saveAndReload(gameForm.id ? 'game_update' : 'game_create', { ...gameForm, scheduled_at: fromLocalDateTimeInput(gameForm.scheduled_at), location: gameForm.location || null })}>{gameForm.id ? 'Update Game' : 'Create Game'}</button></div>
+            <div className="form-actions"><button disabled={!canAdmin || busy} onClick={() => saveAndReload(gameForm.id ? 'game_update' : 'game_create', { ...gameForm, scheduled_at: fromLeagueDateTimeInput(gameForm.scheduled_at), location: gameForm.location || null })}>{gameForm.id ? 'Update Game' : 'Create Game'}</button></div>
           </div>
-          <table className="table"><thead><tr><th>Date</th><th>Matchup</th><th>Status</th><th>Actions</th></tr></thead><tbody>{filteredGames.map((g) => <tr key={g.id}><td>{new Date(g.scheduled_at).toLocaleString()}</td><td>{teamNameById.get(g.home_team)} vs {teamNameById.get(g.away_team)}</td><td>{g.status === 'FINAL' ? 'Completed' : g.status}</td><td><button onClick={() => setGameForm({ id: g.id, season_id: g.season_id, home_team: g.home_team, away_team: g.away_team, scheduled_at: toLocalDateTimeInput(g.scheduled_at), location: g.location ?? '', status: g.status })}>Edit</button> <button disabled={!canAdmin} onClick={() => confirm('Delete game?') && saveAndReload('game_delete', { id: g.id })}>Delete</button> <button onClick={() => openScoreEditor(g)}>Scores</button></td></tr>)}</tbody></table>
+          <table className="table"><thead><tr><th>Date</th><th>Matchup</th><th>Status</th><th>Actions</th></tr></thead><tbody>{filteredGames.map((g) => <tr key={g.id}><td>{formatPublicDateTime(g.scheduled_at)}</td><td>{teamNameById.get(g.home_team)} vs {teamNameById.get(g.away_team)}</td><td>{g.status === 'FINAL' ? 'Completed' : g.status}</td><td><button onClick={() => setGameForm({ id: g.id, season_id: g.season_id, home_team: g.home_team, away_team: g.away_team, scheduled_at: toLeagueDateTimeInput(g.scheduled_at), location: g.location ?? '', status: g.status })}>Edit</button> <button disabled={!canAdmin} onClick={() => confirm('Delete game?') && saveAndReload('game_delete', { id: g.id })}>Delete</button> <button onClick={() => openScoreEditor(g)}>Scores</button></td></tr>)}</tbody></table>
         </section>
       )}
 
@@ -415,7 +404,7 @@ export default function AdminClient() {
         <section className="card">
           <h2 className="section-title">Scores</h2>
           <p className="muted">Select a game to update score and player stats.</p>
-          <table className="table"><thead><tr><th>Date</th><th>Matchup</th><th>Status</th><th>Action</th></tr></thead><tbody>{filteredGames.map((g) => <tr key={g.id}><td>{new Date(g.scheduled_at).toLocaleString()}</td><td>{teamNameById.get(g.home_team)} vs {teamNameById.get(g.away_team)}</td><td>{g.status === 'FINAL' ? 'Completed' : g.status}</td><td><button onClick={() => openScoreEditor(g)}>Update Score</button></td></tr>)}</tbody></table>
+          <table className="table"><thead><tr><th>Date</th><th>Matchup</th><th>Status</th><th>Action</th></tr></thead><tbody>{filteredGames.map((g) => <tr key={g.id}><td>{formatPublicDateTime(g.scheduled_at)}</td><td>{teamNameById.get(g.home_team)} vs {teamNameById.get(g.away_team)}</td><td>{g.status === 'FINAL' ? 'Completed' : g.status}</td><td><button onClick={() => openScoreEditor(g)}>Update Score</button></td></tr>)}</tbody></table>
         </section>
       )}
 
@@ -483,7 +472,7 @@ export default function AdminClient() {
               setBusy(true);
               setError(null);
               try {
-                const res = await fetch('/api/dfs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'create_slate', payload: { season_id: dfsSlateSeasonId, name: dfsSlateName, lock_at: fromLocalDateTimeInput(dfsSlateLock), game_ids: [], status: 'draft' } }) });
+                const res = await fetch('/api/dfs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'create_slate', payload: { season_id: dfsSlateSeasonId, name: dfsSlateName, lock_at: fromLeagueDateTimeInput(dfsSlateLock), game_ids: [], status: 'draft' } }) });
                 const json = await res.json();
                 if (!res.ok) throw new Error(json?.error || 'Failed to create slate');
                 setSuccess('Custom slate created.');
@@ -506,7 +495,7 @@ export default function AdminClient() {
               setBusy(true);
               setError(null);
               try {
-                const res = await fetch('/api/dfs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'create_contest', payload: { slate_id: dfsContestSlateId, name: dfsContestName, lock_at: fromLocalDateTimeInput(dfsContestLock), salary_cap: Number(dfsContestCap), max_entries: Number(dfsContestMaxEntries), status: 'open' } }) });
+                const res = await fetch('/api/dfs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'create_contest', payload: { slate_id: dfsContestSlateId, name: dfsContestName, lock_at: fromLeagueDateTimeInput(dfsContestLock), salary_cap: Number(dfsContestCap), max_entries: Number(dfsContestMaxEntries), status: 'open' } }) });
                 const json = await res.json();
                 if (!res.ok) throw new Error(json?.error || 'Failed to create contest');
                 setSuccess('Custom contest created.');

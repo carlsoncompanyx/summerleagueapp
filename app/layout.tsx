@@ -16,7 +16,7 @@ const logoSrc =
   'https://fsmbogksjimrmfjzxrlx.supabase.co/storage/v1/object/public/images/ecrl%20logo.PNG';
 
 async function getHeaderSession() {
-  if (process.env.NEXT_PUBLIC_ADMIN_TEST_MODE === 'true' && (process.env.VERCEL_ENV ?? 'development') !== 'production') {
+  if (process.env.ADMIN_TEST_MODE === 'true' && (process.env.VERCEL_ENV ?? 'development') !== 'production') {
     const admin = createAdminSupabaseClient();
     const { data: profile } = await admin
       .from('profiles')
@@ -67,12 +67,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               {session.isAuthenticated ? (
                 <>
                   <span className="badge">{session.label || 'Member'}</span>
-                  <Link className="header-auth-link" href="/register">Profile</Link>
+                  <Link className="header-auth-link" href="/register">Account</Link>
                 </>
               ) : (
                 <>
-                  <Link className="header-auth-link" href="/register">Sign Up</Link>
-                  <Link className="header-auth-link" href="/login">Login</Link>
+                  <Link className="header-auth-link" href="/login">Join / Login</Link>
                 </>
               )}
             </div>

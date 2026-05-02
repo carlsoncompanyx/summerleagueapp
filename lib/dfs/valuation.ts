@@ -287,13 +287,9 @@ export async function buildSlateValuations({
 
     const positionMean = row.isGoalie ? (goalieProjectionMean ?? row.projection) : (skaterProjectionMean ?? row.projection);
     const projectionDelta = row.projection - positionMean;
-    const seedSalary = row.isGoalie
-      ? Math.round(7000 + norm * 2200 + projectionDelta * 180)
-      : Math.round(6000 + norm * 5200 + projectionDelta * 260);
+    const seedSalary = Math.round(6000 + norm * 5200 + projectionDelta * 260);
 
-    const gradeBoost = row.isGoalie
-      ? (row.grade === 'A' ? 450 : row.grade === 'B' ? 250 : row.grade === 'D' ? -220 : row.grade === 'F' ? -400 : 0)
-      : (row.grade === 'A' ? 700 : row.grade === 'B' ? 350 : row.grade === 'D' ? -260 : row.grade === 'F' ? -520 : 0);
+    const gradeBoost = row.grade === 'A' ? 700 : row.grade === 'B' ? 350 : row.grade === 'D' ? -260 : row.grade === 'F' ? -520 : 0;
 
     const computedSalary = Math.round(seedSalary + gradeBoost);
     const salary = Number(
