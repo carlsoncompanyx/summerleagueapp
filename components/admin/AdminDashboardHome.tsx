@@ -1,0 +1,4 @@
+'use client';
+export default function AdminDashboardHome({seasonName,teams,players,unassigned,upcoming,pendingTrades,recentFinal,onAddPlayer,onImportPlayers,onImportGames,onAddGame,onEnterScores,onDfs}:any){
+return <section className='card'><h2>Dashboard Home</h2><p><strong>Current season:</strong> {seasonName}</p><p>Teams {teams} · Players {players} · Unassigned {unassigned} · Upcoming games {upcoming} · Pending trades {pendingTrades}</p><div className='button-row'><button onClick={onAddPlayer}>Add Player</button><button onClick={onImportPlayers}>Import Players</button><button onClick={onImportGames}>Import Schedule</button><button onClick={onAddGame}>Add Game</button><button onClick={onEnterScores}>Enter Scores</button><button onClick={onDfs}>DFS Admin</button></div><h3>Recent completed games</h3>{recentFinal.map((g:any)=><p key={g.id}>{g.home_score}-{g.away_score} · {new Date(g.scheduled_at).toLocaleString()}</p>)}</section>
+}

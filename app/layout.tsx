@@ -5,7 +5,11 @@ import NavTabs from '../components/NavTabs';
 import { createAdminSupabaseClient } from '../lib/supabase/admin';
 import { createServerSupabaseClient } from '../lib/supabase/server';
 import { Role } from '../lib/types';
+import { normalizeRole } from '../lib/roles';
 import { socialDisplayName } from '../lib/profiles/display';
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export const metadata = {
   title: 'Emerald Coast Roller League',
@@ -25,7 +29,7 @@ async function getHeaderSession() {
       .maybeSingle();
 
     return {
-      role: (profile?.role ?? 'ADMIN') as Role,
+      role: normalizeRole(profile?.role ?? 'ADMIN') as Role,
       isAuthenticated: true,
       label: socialDisplayName(profile as any),
     };
@@ -44,11 +48,12 @@ async function getHeaderSession() {
       .maybeSingle();
 
     return {
-      role: (profile?.role ?? 'FAN') as Role,
+      role: normalizeRole(profile?.role ?? 'FAN') as Role,
       isAuthenticated: true,
       label: socialDisplayName(profile as any),
     };
-  } catch {
+  } catch (error) {
+    console.error('Header session fetch failed', error);
     return { role: 'FAN' as Role, isAuthenticated: false, label: null };
   }
 }

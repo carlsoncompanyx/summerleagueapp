@@ -32,6 +32,8 @@ export default function StatisticsClient({ data }: { data: any }) {
   return (
     <main>
       <h1>Statistics</h1>
+      <p className='muted'>Definitions: GP=Games Played, G=Goals, A=Assists, P=Points, GAA=Goals Against Average.</p>
+      {!rows.length && <section className='card'><p className='muted'>No statistics available yet. Stats publish after official game sheets are entered.</p></section>}
       <section className="card" style={{ marginBottom: 12 }}>
         <h2 className="section-title">League Leaders</h2>
         <h3 className="card-title">Skaters</h3>

@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminSupabaseClient } from '../../../../lib/supabase/admin';
 import { createServerSupabaseClient } from '../../../../lib/supabase/server';
 import { resolveCurrentSeason } from '../../../../lib/seasons/current';
+import { isAdminRole, isCaptainRole, normalizeRole } from '../../../../lib/roles';
 
 function isAdminTestModeEnabled() {
   const flag = process.env.ADMIN_TEST_MODE === 'true';
@@ -28,7 +29,7 @@ async function getCurrentRole() {
 
   return {
     userId: user.id,
-    role: (profile?.role ?? 'FAN') as 'FAN' | 'PLAYER' | 'CAPTAIN' | 'ADMIN',
+    role: normalizeRole(profile?.role || 'FAN') as 'FAN' | 'PLAYER' | 'CAPTAIN' | 'ADMIN',
   };
 }
 
@@ -49,7 +50,7 @@ async function validateTeamSeason(admin: any, season_id: string | null | undefin
 export async function GET() {
   const admin = createAdminSupabaseClient();
   const me = await getCurrentRole();
-  if (me.role !== 'ADMIN') {
+  if (!isAdminRole(me.role)) {
     return NextResponse.json({ ok: false, error: 'Admin access required.' }, { status: 403 });
   }
 
@@ -108,12 +109,13 @@ export async function POST(req: NextRequest) {
     'trade_reject',
     'import_players_csv',
     'import_games_csv',
+    'games_bulk_update',
   ]);
 
-  if (adminOnly.has(action) && me.role !== 'ADMIN') {
+  if (adminOnly.has(action) && !isAdminRole(me.role)) {
     return NextResponse.json({ error: 'Admin access required.' }, { status: 403 });
   }
-  if (action === 'trade_propose' && !['ADMIN', 'CAPTAIN'].includes(me.role)) {
+  if (action === 'trade_propose' && !(isAdminRole(me.role) || isCaptainRole(me.role))) {
     return NextResponse.json(
       { error: 'Captain or Admin role required to propose trades.' },
       { status: 403 },
@@ -221,18 +223,15 @@ export async function POST(req: NextRequest) {
       if (deleteError) throw deleteError;
 
       if (Array.isArray(stats) && stats.length) {
-        const { data: gameRow } = await admin.from('games').select('season_id').eq('id', gameId).single();
         const { error: statsError } = await admin.from('game_stats').insert(
           stats.map((row: any) => ({
             game_id: gameId,
-            season_id: gameRow?.season_id ?? null,
             player_id: row.player_id,
-            team_id: row.team_id,
+            is_goalie: Boolean(row.is_goalie || String(row.position || '').toLowerCase().includes('goal')),
             games_played: Number(row.games_played || 0),
             goals: Number(row.goals || 0),
             assists: Number(row.assists || 0),
             goals_against: Number(row.goals_against || 0),
-            position: row.position,
           })),
         );
         if (statsError) throw statsError;
@@ -280,8 +279,31 @@ export async function POST(req: NextRequest) {
         .update({ status: 'admin_declined' })
         .eq('id', tradeId);
       if (error) throw error;
+    } else if (action === 'games_bulk_update') {
+      const ids: string[] = Array.isArray(payload.ids) ? payload.ids : [];
+      const mode = payload.mode as 'delete' | 'cancel' | 'postpone';
+      if (!ids.length) return NextResponse.json({ error: 'No games selected.' }, { status: 400 });
+      const { data: selected } = await admin.from('games').select('id,status').in('id', ids);
+      const finalCount = (selected ?? []).filter((g:any)=>String(g.status)==='FINAL').length;
+      if (mode === 'delete' && finalCount) return NextResponse.json({ error: 'Cannot bulk delete FINAL games.' }, { status: 400 });
+      if (mode === 'delete') {
+        await admin.from('game_stats').delete().in('game_id', ids);
+        await admin.from('slate_games').delete().in('game_id', ids);
+        await admin.from('game_betting_lines').delete().in('game_id', ids);
+        const { error } = await admin.from('games').delete().in('id', ids);
+        if (error) throw error;
+        return NextResponse.json({ ok: true, deleted: ids.length });
+      }
+      if (mode === 'cancel' || mode === 'postpone') {
+        const status = mode === 'cancel' ? 'CANCELED' : 'POSTPONED';
+        const { error } = await admin.from('games').update({ status }).in('id', ids).neq('status', 'FINAL');
+        if (error) throw error;
+        return NextResponse.json({ ok: true, updated: ids.length });
+      }
     } else if (action === 'import_players_csv') {
       const rows = payload.rows as any[];
+      const dryRun = Boolean(payload.dry_run);
+      const existingMode = payload.existing_schedule_mode || 'append';
       const { data: seasons } = await admin.from('seasons').select('id,name,start_date,end_date,registration_open_at,registration_close_at');
       const { data: teams } = await admin.from('teams').select('id,name,season_id');
 
@@ -295,18 +317,20 @@ export async function POST(req: NextRequest) {
       const rowErrors: string[] = [];
 
       rows.forEach((row, i) => {
+        const name = row.name || row.player_name || row.full_name || [row.first_name,row.last_name].filter(Boolean).join(' ').trim();
         const seasonId = row.season_id || seasonNameToId.get(String(row.season_name || '').toLowerCase()) || defaultSeasonId;
-        const teamId = row.team_id || teamNameBySeason.get(`${seasonId}:${String(row.team_name || '').toLowerCase()}`);
+        const teamLabel = row.team || row.team_name || '';
+        const teamId = row.team_id || teamNameBySeason.get(`${seasonId}:${String(teamLabel).toLowerCase()}`);
 
         if (!seasonId) {
           rowErrors.push(`Row ${i + 1}: season could not be resolved.`);
           return;
         }
-        if ((row.team_name || row.team_id) && !teamId) {
-          rowErrors.push(`Row ${i + 1}: team '${row.team_name || row.team_id || ''}' could not be resolved in selected season.`);
+        if ((teamLabel || row.team_id) && !teamId) {
+          rowErrors.push(`Row ${i + 1}: team '${teamLabel || row.team_id || ''}' could not be resolved in selected season.`);
           return;
         }
-        if (!row.name && !row.display_name) {
+        if (!name && !row.display_name) {
           rowErrors.push(`Row ${i + 1}: player name is required.`);
           return;
         }
@@ -315,8 +339,8 @@ export async function POST(req: NextRequest) {
           season_id: seasonId,
           team_id: teamId || null,
           user_id: row.user_id || null,
-          name: row.name || row.display_name,
-          jersey: row.jersey_number ? Number(row.jersey_number) : row.jersey ? Number(row.jersey) : null,
+          name: name || row.display_name,
+          jersey: row.jersey_number ? Number(row.jersey_number) : row.jersey ? Number(row.jersey) : row.number ? Number(row.number) : row.no ? Number(row.no) : null,
           position: row.position || null,
         });
       });
@@ -325,10 +349,16 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'CSV validation failed', rowErrors }, { status: 400 });
       }
 
+      if (dryRun) {
+        return NextResponse.json({ ok: true, dryRun: true, counts: { inserted: mapped.length, updated: 0, skipped: 0, errors: rowErrors.length } });
+      }
       const { error } = await admin.from('players').insert(mapped);
       if (error) throw error;
+      return NextResponse.json({ ok: true, counts: { inserted: mapped.length, updated: 0, skipped: 0, errors: 0 } });
     } else if (action === 'import_games_csv') {
       const rows = payload.rows as any[];
+      const dryRun = Boolean(payload.dry_run);
+      const existingMode = payload.existing_schedule_mode || 'append';
       const { data: seasons } = await admin.from('seasons').select('id,name,start_date,end_date,registration_open_at,registration_close_at');
       const { data: teams } = await admin.from('teams').select('id,name,season_id');
 
@@ -342,13 +372,19 @@ export async function POST(req: NextRequest) {
       const rowErrors: string[] = [];
       rows.forEach((row, i) => {
         const seasonId = row.season_id || seasonNameToId.get(String(row.season_name || '').toLowerCase()) || defaultSeasonId;
-        const homeTeam = row.home_team || teamBySeasonName.get(`${seasonId}:${String(row.home_team_name || '').toLowerCase()}`);
-        const awayTeam = row.away_team || teamBySeasonName.get(`${seasonId}:${String(row.away_team_name || '').toLowerCase()}`);
+        const homeLabel = row.home_team || row.home_team_name || row.home || '';
+        const awayLabel = row.away_team || row.away_team_name || row.away || '';
+        const homeTeam = row.home_team_id || teamBySeasonName.get(`${seasonId}:${String(homeLabel).toLowerCase()}`);
+        const awayTeam = row.away_team_id || teamBySeasonName.get(`${seasonId}:${String(awayLabel).toLowerCase()}`);
         if (!seasonId || !homeTeam || !awayTeam) {
           rowErrors.push(`Row ${i + 1}: could not resolve season/home/away team.`);
           return;
         }
-        const scheduled = toIso(row.scheduled_at);
+        if (homeTeam === awayTeam) {
+          rowErrors.push(`Row ${i + 1}: home and away team cannot match.`);
+          return;
+        }
+        const scheduled = toIso(row.scheduled_at || `${row.date || ''} ${row.time || ''}`.trim());
         if (!scheduled) {
           rowErrors.push(`Row ${i + 1}: invalid scheduled_at.`);
           return;
@@ -367,8 +403,19 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'CSV validation failed', rowErrors }, { status: 400 });
       }
 
+      if (dryRun) {
+        return NextResponse.json({ ok: true, dryRun: true, counts: { inserted: mapped.length, updated: 0, skipped: 0, errors: rowErrors.length } });
+      }
+      if (existingMode === 'replace_non_final') {
+        const { data: existing } = await admin.from('games').select('id,status').eq('season_id', defaultSeasonId).neq('status','FINAL');
+        const ids=(existing??[]).map((g:any)=>g.id);
+        if (ids.length){ await admin.from('game_stats').delete().in('game_id', ids); await admin.from('slate_games').delete().in('game_id', ids); await admin.from('game_betting_lines').delete().in('game_id', ids); const d=await admin.from('games').delete().in('id',ids); if(d.error) throw d.error; }
+      } else if (existingMode === 'cancel_non_final') {
+        const u=await admin.from('games').update({status:'CANCELED'}).eq('season_id', defaultSeasonId).neq('status','FINAL'); if(u.error) throw u.error;
+      }
       const { error } = await admin.from('games').insert(mapped);
       if (error) throw error;
+      return NextResponse.json({ ok: true, counts: { inserted: mapped.length, updated: 0, skipped: 0, errors: 0 } });
     }
 
     return NextResponse.json({ ok: true });

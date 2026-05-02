@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminSupabaseClient } from '../../../lib/supabase/admin';
 import { createServerSupabaseClient } from '../../../lib/supabase/server';
+import { isAdminRole, normalizeRole } from '../../../lib/roles';
 import { socialDisplayName } from '../../../lib/profiles/display';
 
 function testModeAdmin() {
@@ -12,14 +13,14 @@ async function currentUser() {
     const admin = createAdminSupabaseClient();
     const { data: profile } = await admin.from('profiles').select('user_id').limit(1).maybeSingle();
     if (!profile?.user_id) return null;
-    return { id: profile.user_id, admin: true };
+    return { id: profile.user_id, admin: true, role: 'ADMIN' };
   }
   const server = createServerSupabaseClient();
   const { data: { user } } = await server.auth.getUser();
   if (!user) return null;
   const admin = createAdminSupabaseClient();
   const { data: p } = await admin.from('profiles').select('role').eq('user_id', user.id).maybeSingle();
-  return { id: user.id, admin: p?.role === 'ADMIN' };
+  return { id: user.id, admin: isAdminRole(p?.role), role: normalizeRole(p?.role ?? 'FAN') };
 }
 
 export async function GET(req: NextRequest) {
@@ -62,11 +63,14 @@ export async function POST(req: NextRequest) {
 
   try {
     if (action === 'chat_send') {
+      const message = String(payload.message || '').trim();
+      if (!message) return NextResponse.json({ error: 'Message is required.' }, { status: 400 });
+      if (message.length > 1000) return NextResponse.json({ error: 'Message too long (max 1000).' }, { status: 400 });
       const { error } = await admin.from('chat_messages').insert({
         season_id: payload.season_id || null,
         user_id: me.id,
-        role: payload.role || 'FAN',
-        message: payload.message,
+        role: me.role || 'FAN',
+        message: String(payload.message || '').trim(),
       });
       if (error) throw error;
       return NextResponse.json({ ok: true });

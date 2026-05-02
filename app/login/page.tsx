@@ -2,11 +2,13 @@
 
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 
 import { createBrowserSupabaseClient } from '../../lib/supabase/client';
 
 export default function LoginPage() {
   const supabase = useMemo(() => createBrowserSupabaseClient(), []);
+  const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -25,7 +27,12 @@ export default function LoginPage() {
         password: password.trim(),
       });
       if (signInError) throw signInError;
+      const meRes = await fetch('/api/me', { cache: 'no-store' });
+      const me = meRes.ok ? await meRes.json() : null;
       setSuccess('Logged in successfully.');
+      router.refresh();
+      if (me?.isAdmin === true) window.location.assign('/admin');
+      else window.location.assign('/');
     } catch (e: any) {
       setError(e?.message ?? 'Unable to log in.');
     } finally {

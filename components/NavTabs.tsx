@@ -2,6 +2,8 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { normalizeRole } from '../lib/roles';
 import {
   BarChart2,
   Calendar,
@@ -22,16 +24,36 @@ const ITEMS = [
   { label: 'Standings', href: '/standings', testId: 'tab-standings', icon: Trophy },
   { label: 'Statistics', href: '/statistics', testId: 'tab-statistics', icon: BarChart2 },
   { label: 'DFS', href: '/dfs', testId: 'tab-dfs', icon: Flame },
-  { label: 'Community', href: '/chat', testId: 'tab-chat', icon: MessageCircle },
+  { label: 'Chat', href: '/chat', testId: 'tab-chat', icon: MessageCircle },
   { label: 'Betting', href: '/betting', testId: 'tab-betting', icon: CircleDollarSign },
   { label: 'Admin', href: '/admin', testId: 'tab-admin', icon: ShieldAlert },
 ] as const;
 
-export default function NavTabs({ role = 'ADMIN' }: { role?: Role }) {
+export default function NavTabs({ role = 'FAN' }: { role?: Role | string }) {
   const pathname = usePathname();
+  const [clientRole, setClientRole] = useState<string>(normalizeRole(role));
+
+  useEffect(() => {
+    let live = true;
+    fetch('/api/me', { cache: 'no-store' })
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`me ${res.status}`);
+        const me = await res.json();
+        if (!live) return;
+        if (me?.authenticated) {
+          const nextRole = normalizeRole(me?.normalizedRole || me?.rawRole || role);
+          setClientRole(nextRole);
+          if (process.env.NODE_ENV !== 'production') console.info('[NavTabs] role sync', { initialRole: role, meRole: nextRole, isAdmin: me?.isAdmin });
+        }
+      })
+      .catch((err) => {
+        if (process.env.NODE_ENV !== 'production') console.warn('[NavTabs] /api/me failed', err);
+      });
+    return () => { live = false; };
+  }, [role]);
 
   const filtered = ITEMS.filter((item) => {
-    if (item.label === 'Admin') return canViewAdmin(role);
+    if (item.label === 'Admin') return canViewAdmin(clientRole);
     return true;
   });
 

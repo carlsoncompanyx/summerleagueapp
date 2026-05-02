@@ -6,8 +6,11 @@ export default async function StandingsPage() {
   return (
     <main>
       <h1>Standings</h1>
+      <p className='muted'>Season: {data.season?.name ?? 'Current season'}</p>
       {'unavailable' in data && data.unavailable ? (
         <p>{data.reason}</p>
+      ) : !data.standings.length ? (
+        <section className='card'><p className='muted'>Preseason: standings will appear after results are recorded.</p></section>
       ) : (
         <section className="card">
           <div className="desktop-only responsive-table">
