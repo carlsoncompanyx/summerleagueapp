@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminSupabaseClient } from '../../../lib/supabase/admin';
 import { createServerSupabaseClient } from '../../../lib/supabase/server';
+import { isAdminRole } from '../../../lib/roles';
 import { socialDisplayName } from '../../../lib/profiles/display';
 
 function testModeAdmin() {
@@ -19,7 +20,7 @@ async function currentUser() {
   if (!user) return null;
   const admin = createAdminSupabaseClient();
   const { data: p } = await admin.from('profiles').select('role').eq('user_id', user.id).maybeSingle();
-  return { id: user.id, admin: p?.role === 'ADMIN' };
+  return { id: user.id, admin: isAdminRole(p?.role) };
 }
 
 export async function GET(req: NextRequest) {

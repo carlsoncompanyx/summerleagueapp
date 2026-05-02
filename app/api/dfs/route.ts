@@ -4,6 +4,7 @@ import { createServerSupabaseClient } from '../../../lib/supabase/server';
 import { buildSlateValuations, getFantasyPlayerDetails } from '../../../lib/dfs/valuation';
 import { computeDfsFantasyPoints, DFS_CAPTAIN_MULTIPLIER, parseDfsPosition } from '../../../lib/dfs/scoring';
 import { leagueDateKey } from '../../../lib/formatters';
+import { isAdminRole, normalizeRole } from '../../../lib/roles';
 
 const REQUIRED_SLOTS = ['CAPTAIN', 'SKATER_1', 'SKATER_2', 'SKATER_3', 'SKATER_4', 'GOALIE'];
 
@@ -11,22 +12,18 @@ function testModeAdmin() {
   return process.env.ADMIN_TEST_MODE === 'true' && (process.env.VERCEL_ENV ?? 'development') !== 'production';
 }
 
-function isAdminRole(role: string | null | undefined) {
-  return role === 'ADMIN';
-}
-
 async function getCurrentActor() {
   const admin = createAdminSupabaseClient();
   if (testModeAdmin()) {
     const { data: profile } = await admin.from('profiles').select('user_id,role').limit(1).maybeSingle();
-    return { userId: profile?.user_id ?? null, role: profile?.role ?? 'ADMIN' };
+    return { userId: profile?.user_id ?? null, role: normalizeRole(profile?.role ?? 'ADMIN') };
   }
 
   const server = createServerSupabaseClient();
   const { data: { user } } = await server.auth.getUser();
   if (!user) return { userId: null, role: 'FAN' };
   const { data: profile } = await admin.from('profiles').select('role').eq('user_id', user.id).maybeSingle();
-  return { userId: user.id, role: profile?.role ?? 'FAN' };
+  return { userId: user.id, role: normalizeRole(profile?.role ?? 'FAN') };
 }
 
 function validateSlots(slots: any[]) {

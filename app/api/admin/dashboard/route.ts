@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminSupabaseClient } from '../../../../lib/supabase/admin';
 import { createServerSupabaseClient } from '../../../../lib/supabase/server';
 import { resolveCurrentSeason } from '../../../../lib/seasons/current';
+import { isAdminRole, normalizeRole } from '../../../../lib/roles';
 
 function isAdminTestModeEnabled() {
   const flag = process.env.ADMIN_TEST_MODE === 'true';
@@ -28,7 +29,7 @@ async function getCurrentRole() {
 
   return {
     userId: user.id,
-    role: (profile?.role ?? 'FAN') as 'FAN' | 'PLAYER' | 'CAPTAIN' | 'ADMIN',
+    role: normalizeRole(profile?.role || 'FAN') as 'FAN' | 'PLAYER' | 'CAPTAIN' | 'ADMIN',
   };
 }
 
@@ -49,7 +50,7 @@ async function validateTeamSeason(admin: any, season_id: string | null | undefin
 export async function GET() {
   const admin = createAdminSupabaseClient();
   const me = await getCurrentRole();
-  if (me.role !== 'ADMIN') {
+  if (!isAdminRole(me.role)) {
     return NextResponse.json({ ok: false, error: 'Admin access required.' }, { status: 403 });
   }
 
@@ -110,10 +111,10 @@ export async function POST(req: NextRequest) {
     'import_games_csv',
   ]);
 
-  if (adminOnly.has(action) && me.role !== 'ADMIN') {
+  if (adminOnly.has(action) && !isAdminRole(me.role)) {
     return NextResponse.json({ error: 'Admin access required.' }, { status: 403 });
   }
-  if (action === 'trade_propose' && !['ADMIN', 'CAPTAIN'].includes(me.role)) {
+  if (action === 'trade_propose' && !(isAdminRole(me.role) || normalizeRole(me.role) === 'CAPTAIN')) {
     return NextResponse.json(
       { error: 'Captain or Admin role required to propose trades.' },
       { status: 403 },
