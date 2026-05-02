@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminSupabaseClient } from '../../../../lib/supabase/admin';
 import { createServerSupabaseClient } from '../../../../lib/supabase/server';
 import { resolveCurrentSeason } from '../../../../lib/seasons/current';
-import { isAdminRole, normalizeRole } from '../../../../lib/roles';
+import { isAdminRole, isCaptainRole, normalizeRole } from '../../../../lib/roles';
 
 function isAdminTestModeEnabled() {
   const flag = process.env.ADMIN_TEST_MODE === 'true';
@@ -114,7 +114,7 @@ export async function POST(req: NextRequest) {
   if (adminOnly.has(action) && !isAdminRole(me.role)) {
     return NextResponse.json({ error: 'Admin access required.' }, { status: 403 });
   }
-  if (action === 'trade_propose' && !(isAdminRole(me.role) || normalizeRole(me.role) === 'CAPTAIN')) {
+  if (action === 'trade_propose' && !(isAdminRole(me.role) || isCaptainRole(me.role))) {
     return NextResponse.json(
       { error: 'Captain or Admin role required to propose trades.' },
       { status: 403 },

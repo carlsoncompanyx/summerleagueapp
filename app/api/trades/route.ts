@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminSupabaseClient } from '../../../lib/supabase/admin';
 import { createServerSupabaseClient } from '../../../lib/supabase/server';
+import { isAdminRole, isCaptainRole, normalizeRole } from '../../../lib/roles';
 
 function testModeAdmin() {
   return process.env.ADMIN_TEST_MODE === 'true' && (process.env.VERCEL_ENV ?? 'development') !== 'production';
@@ -19,7 +20,7 @@ async function getActor() {
 
   const admin = createAdminSupabaseClient();
   const { data: profile } = await admin.from('profiles').select('role').eq('user_id', user.id).maybeSingle();
-  return { userId: user.id, role: (profile?.role ?? 'FAN') as 'FAN' | 'PLAYER' | 'CAPTAIN' | 'ADMIN' };
+  return { userId: user.id, role: normalizeRole(profile?.role ?? 'FAN') as 'FAN' | 'PLAYER' | 'CAPTAIN' | 'ADMIN' };
 }
 
 async function getCaptainTeamIds(admin: any, userId: string | null | undefined) {
@@ -85,12 +86,12 @@ export async function POST(req: NextRequest) {
 
   try {
     if (action === 'propose') {
-      if (!['CAPTAIN', 'ADMIN'].includes(actor.role)) {
+      if (!(isCaptainRole(actor.role) || isAdminRole(actor.role))) {
         return NextResponse.json({ error: 'Captain/Admin only' }, { status: 403 });
       }
 
       const captainTeamIds = new Set(await getCaptainTeamIds(admin, actor.userId));
-      if (actor.role !== 'ADMIN' && !captainTeamIds.has(payload.from_team_id)) {
+      if (!isAdminRole(actor.role) && !captainTeamIds.has(payload.from_team_id)) {
         return NextResponse.json({ error: 'Only the captain of the source team can propose this trade.' }, { status: 403 });
       }
 
@@ -147,7 +148,7 @@ export async function POST(req: NextRequest) {
       }
 
       const captainTeamIds = new Set(await getCaptainTeamIds(admin, actor.userId));
-      if (actor.role !== 'ADMIN' && !captainTeamIds.has(trade.to_team_id)) {
+      if (!isAdminRole(actor.role) && !captainTeamIds.has(trade.to_team_id)) {
         return NextResponse.json({ error: 'Only the receiving team captain can respond to this trade.' }, { status: 403 });
       }
 
@@ -169,7 +170,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === 'admin_review') {
-      if (actor.role !== 'ADMIN') return NextResponse.json({ error: 'Admin only' }, { status: 403 });
+      if (!isAdminRole(actor.role)) return NextResponse.json({ error: 'Admin only' }, { status: 403 });
       const { trade_id, approve } = payload;
       const { data: trade, error: tradeErr } = await admin.from('trades').select('*').eq('id', trade_id).single();
       if (tradeErr) throw tradeErr;
