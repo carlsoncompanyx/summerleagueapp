@@ -109,6 +109,7 @@ export async function POST(req: NextRequest) {
     'trade_reject',
     'import_players_csv',
     'import_games_csv',
+    'games_bulk_update',
   ]);
 
   if (adminOnly.has(action) && !isAdminRole(me.role)) {
@@ -222,18 +223,15 @@ export async function POST(req: NextRequest) {
       if (deleteError) throw deleteError;
 
       if (Array.isArray(stats) && stats.length) {
-        const { data: gameRow } = await admin.from('games').select('season_id').eq('id', gameId).single();
         const { error: statsError } = await admin.from('game_stats').insert(
           stats.map((row: any) => ({
             game_id: gameId,
-            season_id: gameRow?.season_id ?? null,
             player_id: row.player_id,
-            team_id: row.team_id,
+            is_goalie: Boolean(row.is_goalie || String(row.position || '').toLowerCase().includes('goal')),
             games_played: Number(row.games_played || 0),
             goals: Number(row.goals || 0),
             assists: Number(row.assists || 0),
             goals_against: Number(row.goals_against || 0),
-            position: row.position,
           })),
         );
         if (statsError) throw statsError;
@@ -281,9 +279,31 @@ export async function POST(req: NextRequest) {
         .update({ status: 'admin_declined' })
         .eq('id', tradeId);
       if (error) throw error;
+    } else if (action === 'games_bulk_update') {
+      const ids: string[] = Array.isArray(payload.ids) ? payload.ids : [];
+      const mode = payload.mode as 'delete' | 'cancel' | 'postpone';
+      if (!ids.length) return NextResponse.json({ error: 'No games selected.' }, { status: 400 });
+      const { data: selected } = await admin.from('games').select('id,status').in('id', ids);
+      const finalCount = (selected ?? []).filter((g:any)=>String(g.status)==='FINAL').length;
+      if (mode === 'delete' && finalCount) return NextResponse.json({ error: 'Cannot bulk delete FINAL games.' }, { status: 400 });
+      if (mode === 'delete') {
+        await admin.from('game_stats').delete().in('game_id', ids);
+        await admin.from('slate_games').delete().in('game_id', ids);
+        await admin.from('game_betting_lines').delete().in('game_id', ids);
+        const { error } = await admin.from('games').delete().in('id', ids);
+        if (error) throw error;
+        return NextResponse.json({ ok: true, deleted: ids.length });
+      }
+      if (mode === 'cancel' || mode === 'postpone') {
+        const status = mode === 'cancel' ? 'CANCELED' : 'POSTPONED';
+        const { error } = await admin.from('games').update({ status }).in('id', ids).neq('status', 'FINAL');
+        if (error) throw error;
+        return NextResponse.json({ ok: true, updated: ids.length });
+      }
     } else if (action === 'import_players_csv') {
       const rows = payload.rows as any[];
       const dryRun = Boolean(payload.dry_run);
+      const existingMode = payload.existing_schedule_mode || 'append';
       const { data: seasons } = await admin.from('seasons').select('id,name,start_date,end_date,registration_open_at,registration_close_at');
       const { data: teams } = await admin.from('teams').select('id,name,season_id');
 
@@ -320,7 +340,7 @@ export async function POST(req: NextRequest) {
           team_id: teamId || null,
           user_id: row.user_id || null,
           name: name || row.display_name,
-          jersey: row.jersey_number ? Number(row.jersey_number) : row.jersey ? Number(row.jersey) : null,
+          jersey: row.jersey_number ? Number(row.jersey_number) : row.jersey ? Number(row.jersey) : row.number ? Number(row.number) : row.no ? Number(row.no) : null,
           position: row.position || null,
         });
       });
@@ -338,6 +358,7 @@ export async function POST(req: NextRequest) {
     } else if (action === 'import_games_csv') {
       const rows = payload.rows as any[];
       const dryRun = Boolean(payload.dry_run);
+      const existingMode = payload.existing_schedule_mode || 'append';
       const { data: seasons } = await admin.from('seasons').select('id,name,start_date,end_date,registration_open_at,registration_close_at');
       const { data: teams } = await admin.from('teams').select('id,name,season_id');
 
@@ -384,6 +405,13 @@ export async function POST(req: NextRequest) {
 
       if (dryRun) {
         return NextResponse.json({ ok: true, dryRun: true, counts: { inserted: mapped.length, updated: 0, skipped: 0, errors: rowErrors.length } });
+      }
+      if (existingMode === 'replace_non_final') {
+        const { data: existing } = await admin.from('games').select('id,status').eq('season_id', defaultSeasonId).neq('status','FINAL');
+        const ids=(existing??[]).map((g:any)=>g.id);
+        if (ids.length){ await admin.from('game_stats').delete().in('game_id', ids); await admin.from('slate_games').delete().in('game_id', ids); await admin.from('game_betting_lines').delete().in('game_id', ids); const d=await admin.from('games').delete().in('id',ids); if(d.error) throw d.error; }
+      } else if (existingMode === 'cancel_non_final') {
+        const u=await admin.from('games').update({status:'CANCELED'}).eq('season_id', defaultSeasonId).neq('status','FINAL'); if(u.error) throw u.error;
       }
       const { error } = await admin.from('games').insert(mapped);
       if (error) throw error;
