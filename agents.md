@@ -237,3 +237,11 @@ A major admin task is not complete unless:
 9. Final response marks acceptance criteria Done, Partially Done, or Blocked.
 
 Do not satisfy major app-overhaul prompts by only adding helper files or making tiny route changes. For admin-overhaul tasks, meaningful component refactoring and visible workflow improvement are required.
+
+## Codex execution expectation
+
+For substantial implementation tasks, do not optimize for a 5–10 minute patch. Take the time needed to inspect the code, implement a complete vertical slice, run checks, and self-review the diff.
+
+Do not respond with scope negotiation unless there is a hard technical blocker. If a task is large, work through it in internal milestones in the same run. Complete the highest-priority milestones first and report Done / Partial / Blocked at the end.
+
+Major app tasks should not be satisfied by tiny helper-only diffs or placeholder UI. Visible product behavior must change.
