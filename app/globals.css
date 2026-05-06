@@ -631,3 +631,32 @@ button:focus-visible{outline:2px solid #60a5fa;outline-offset:2px}
 
 .scoresheet-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 @media (max-width:900px){.scoresheet-grid{grid-template-columns:1fr}}
+
+.tabs button {
+  border: 1px solid #c8d7df;
+  border-radius: 999px;
+  background: #fff;
+  color: #244556;
+  font-weight: 800;
+  padding: 7px 12px;
+  cursor: pointer;
+}
+.tabs button.active,
+.tabs button[aria-selected="true"] {
+  background: #0f766e;
+  border-color: #0f766e;
+  color: #fff;
+}
+.betting-lines-table { min-width: 760px; }
+.bet-market-pills { display: flex; flex-wrap: wrap; gap: 6px; }
+.bet-pill {
+  display: inline-flex;
+  border: 1px solid #c8d7df;
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: #f8fbfd;
+  color: #102231;
+  font-weight: 800;
+  font-size: 0.82rem;
+  white-space: nowrap;
+}

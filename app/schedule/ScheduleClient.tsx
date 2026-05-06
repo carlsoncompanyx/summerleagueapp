@@ -3,92 +3,92 @@
 import { useMemo, useState } from 'react';
 import { formatPublicDateTime } from '../../lib/formatters';
 
-const GAME_FILTER_STATUSES = ['SCHEDULED', 'LIVE', 'FINAL'];
-
 type ScheduleClientProps = {
   schedule: any[];
-  teams: any[];
-  initialDate?: string;
-  initialStatus?: string;
-  initialTeam?: string;
 };
 
-export default function ScheduleClient({
-  schedule,
-  teams,
-  initialDate = '',
-  initialStatus = 'all',
-  initialTeam = 'all',
-}: ScheduleClientProps) {
-  const activeGames = useMemo(
-    () => schedule.filter((game: any) => !['CANCELED'].includes(String(game.status))),
-    [schedule],
-  );
-  const dates = useMemo(
-    () => Array.from(new Set(activeGames.map((game: any) => String(game.scheduled_at).slice(0, 10)))),
-    [activeGames],
-  );
-  const defaultDate = useMemo(
-    () => activeGames.find((game: any) => new Date(game.scheduled_at).getTime() >= Date.now())?.scheduled_at?.slice(0, 10)
-      || activeGames[0]?.scheduled_at?.slice(0, 10)
-      || '',
-    [activeGames],
-  );
+type GamesTab = 'upcoming' | 'completed';
 
-  const [selectedDate, setSelectedDate] = useState(initialDate || defaultDate);
-  const [status, setStatus] = useState(initialStatus);
-  const [team, setTeam] = useState(initialTeam);
+function datePart(scheduledAt: string) {
+  return formatPublicDateTime(scheduledAt).split(' at ')[0] ?? String(scheduledAt).slice(0, 10);
+}
 
-  const grouped = useMemo(() => {
-    const filtered = activeGames.filter((game: any) =>
-      (team === 'all' || game.home_team === team || game.away_team === team)
-      && (status === 'all' || game.status === status)
-      && (!selectedDate || String(game.scheduled_at).slice(0, 10) === selectedDate),
-    );
-    return filtered.reduce((acc: Record<string, any[]>, game: any) => {
-      const key = String(game.scheduled_at).slice(0, 10);
-      acc[key] = acc[key] || [];
-      acc[key].push(game);
-      return acc;
-    }, {});
-  }, [activeGames, selectedDate, status, team]);
+function timePart(scheduledAt: string) {
+  return formatPublicDateTime(scheduledAt).split(' at ')[1] ?? '';
+}
+
+function gameScore(game: any) {
+  if (String(game.status) !== 'FINAL') return '—';
+  const away = game.away_score ?? '-';
+  const home = game.home_score ?? '-';
+  return `${away} - ${home}`;
+}
+
+export default function ScheduleClient({ schedule }: ScheduleClientProps) {
+  const [activeTab, setActiveTab] = useState<GamesTab>('upcoming');
+
+  const upcomingGames = useMemo(() => schedule
+    .filter((game: any) => !['FINAL', 'CANCELED'].includes(String(game.status).toUpperCase()))
+    .sort((a: any, b: any) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime()), [schedule]);
+
+  const completedGames = useMemo(() => schedule
+    .filter((game: any) => String(game.status).toUpperCase() === 'FINAL')
+    .sort((a: any, b: any) => new Date(b.scheduled_at).getTime() - new Date(a.scheduled_at).getTime()), [schedule]);
+
+  const games = activeTab === 'upcoming' ? upcomingGames : completedGames;
 
   return (
-    <>
-      <section className="card" style={{ marginBottom: 12 }}>
-        <div className="button-row">
-          <select value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)}>
-            {dates.map((date) => <option key={date} value={date}>{date}</option>)}
-          </select>
-          <select value={status} onChange={(event) => setStatus(event.target.value)}>
-            <option value="all">All Statuses</option>
-            {GAME_FILTER_STATUSES.map((option) => <option key={option} value={option}>{option}</option>)}
-          </select>
-          <select value={team} onChange={(event) => setTeam(event.target.value)}>
-            <option value="all">All Teams</option>
-            {teams.map((row: any) => <option key={row.id} value={row.id}>{row.name}</option>)}
-          </select>
-        </div>
-      </section>
+    <section className="card">
+      <div className="tabs" role="tablist" aria-label="Games view">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'upcoming'}
+          className={activeTab === 'upcoming' ? 'active' : ''}
+          onClick={() => setActiveTab('upcoming')}
+        >
+          Upcoming Games
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'completed'}
+          className={activeTab === 'completed' ? 'active' : ''}
+          onClick={() => setActiveTab('completed')}
+        >
+          Completed Games
+        </button>
+      </div>
 
-      {Object.keys(grouped).length === 0
-        ? <section className="card"><p className="muted">No games match these filters.</p></section>
-        : Object.entries(grouped).map(([day, games]: any) => (
-          <section key={day} className="card" style={{ marginBottom: 12 }}>
-            <h2>{day}</h2>
-            <div className="stack-list">
-              {games.map((game: any) => (
-                <article key={game.id} className="list-card">
-                  <p><strong>{game.away_team_name}</strong> @ <strong>{game.home_team_name}</strong></p>
-                  <p className="muted">{formatPublicDateTime(game.scheduled_at)} - {game.status}</p>
-                  {['FINAL', 'LIVE'].includes(String(game.status))
-                    ? <p className="muted">Score: {game.away_score}-{game.home_score}</p>
-                    : null}
-                </article>
-              ))}
-            </div>
-          </section>
-        ))}
-    </>
+      <div className="responsive-table">
+        <table className="table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Time</th>
+              <th>Away</th>
+              <th>Home</th>
+              <th>Location</th>
+              <th>Status</th>
+              <th>Score</th>
+            </tr>
+          </thead>
+          <tbody>
+            {games.map((game: any) => (
+              <tr key={game.id}>
+                <td>{datePart(game.scheduled_at)}</td>
+                <td>{timePart(game.scheduled_at)}</td>
+                <td>{game.away_team_name}</td>
+                <td>{game.home_team_name}</td>
+                <td>{game.location || '—'}</td>
+                <td>{game.status}</td>
+                <td><strong>{gameScore(game)}</strong></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {!games.length && <p className="muted">No {activeTab === 'upcoming' ? 'upcoming' : 'completed'} games found.</p>}
+    </section>
   );
 }
