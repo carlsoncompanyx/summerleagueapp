@@ -94,11 +94,11 @@ function pointScorerRows(rows: any[]) {
   );
 }
 
-export default function DfsClient() {
-  const [loading, setLoading] = useState(true);
-  const [data, setData] = useState<any>({ contests: [], slates: [], slatePlayers: [], slateGames: [], myEntries: [], leaderboardEntries: [] });
-  const [selectedContest, setSelectedContest] = useState('');
-  const [selectedSlate, setSelectedSlate] = useState('');
+export default function DfsClient({ initialData = null }: { initialData?: any }) {
+  const [loading, setLoading] = useState(!initialData);
+  const [data, setData] = useState<any>(initialData ?? { contests: [], slates: [], slatePlayers: [], slateGames: [], myEntries: [], leaderboardEntries: [] });
+  const [selectedContest, setSelectedContest] = useState(initialData?.selectedContestId ?? initialData?.recommendedContestId ?? '');
+  const [selectedSlate, setSelectedSlate] = useState(initialData?.selectedSlateId ?? initialData?.recommendedSlateId ?? '');
   const [builderOpen, setBuilderOpen] = useState(false);
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
   const [activeSlot, setActiveSlot] = useState<SlotKey>('CAPTAIN');
@@ -159,7 +159,7 @@ export default function DfsClient() {
     }
   }
 
-  useEffect(() => { void load(); }, []);
+  useEffect(() => { if (!initialData) void load(); }, []);
   useEffect(() => {
     if (!selectedContest) return;
     const contest = data.contests.find((row: any) => row.id === selectedContest);

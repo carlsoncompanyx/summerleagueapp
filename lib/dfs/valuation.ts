@@ -24,6 +24,8 @@ const DEFAULT_SALARY_CAP = 50000;
 const LINEUP_SALARY_UNITS = 6.5;
 const MIN_SALARY = 3500;
 const MAX_SALARY = 16000;
+const INITIAL_ELASTICITY = 1.10;
+const MAX_CALIBRATION_ELASTICITY = 1.35;
 
 function normalizePlayerName(name: string | null | undefined) {
   return (name ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
@@ -152,14 +154,33 @@ function roundToNearestHundred(value: number) {
   return Math.round(value / 100) * 100;
 }
 
-function salaryFromProjectionRatio(projection: number, averageProjection: number, elasticity: number, averageSlotSalary: number) {
+function rawSalaryFromProjectionRatio(projection: number, averageProjection: number, elasticity: number, averageSlotSalary: number) {
   const safeAverage = Math.max(0.01, averageProjection);
   const safeProjection = Math.max(0.01, projection);
-  return clamp(
-    roundToNearestHundred(averageSlotSalary * Math.pow(safeProjection / safeAverage, elasticity)),
-    MIN_SALARY,
-    MAX_SALARY,
-  );
+  return averageSlotSalary * Math.pow(safeProjection / safeAverage, elasticity);
+}
+
+function applySoftMaxCompression(rawRows: Array<{ key: string; rawSalary: number }>) {
+  const overMax = rawRows.filter((row) => row.rawSalary > MAX_SALARY).sort((a, b) => a.rawSalary - b.rawSalary);
+  const minOverRaw = overMax[0]?.rawSalary ?? MAX_SALARY;
+  const maxRaw = overMax[overMax.length - 1]?.rawSalary ?? MAX_SALARY;
+  const compressed = new Map<string, number>();
+
+  for (const row of rawRows) {
+    let salary = row.rawSalary;
+    if (row.rawSalary > MAX_SALARY) {
+      if (maxRaw <= minOverRaw) {
+        salary = MAX_SALARY;
+      } else {
+        const topBand = 1200;
+        const percentile = (row.rawSalary - minOverRaw) / (maxRaw - minOverRaw);
+        salary = (MAX_SALARY - topBand) + (topBand * Math.pow(percentile, 0.85));
+      }
+    }
+    compressed.set(row.key, clamp(roundToNearestHundred(salary), MIN_SALARY, MAX_SALARY));
+  }
+
+  return compressed;
 }
 
 function topLineupSalary(candidates: Array<{ isGoalie: boolean; projection: number; salary: number }>) {
@@ -172,29 +193,41 @@ function topLineupSalary(candidates: Array<{ isGoalie: boolean; projection: numb
 }
 
 function calibrateSalaries(candidates: Array<{ player: any; isGoalie: boolean; projection: number; override?: any }>, salaryCap = DEFAULT_SALARY_CAP) {
-  const projections = candidates.map((row) => row.projection).filter((value) => Number.isFinite(value) && value > 0);
+  const projections = candidates
+    .filter((row) => row.override?.salary_override == null)
+    .map((row) => row.projection)
+    .filter((value) => Number.isFinite(value) && value > 0);
   const averageProjection = mean(projections) ?? 1;
   const averageSlotSalary = salaryCap / LINEUP_SALARY_UNITS;
-  let elasticity = 1.15;
+  let elasticity = INITIAL_ELASTICITY;
+  let aboveAveragePremium = 1;
 
-  const priceAt = (nextElasticity: number) => candidates.map((row) => ({
-    ...row,
-    salary: Number(row.override?.salary_override ?? salaryFromProjectionRatio(row.projection, averageProjection, nextElasticity, averageSlotSalary)),
-  }));
+  const priceAt = (nextElasticity: number, premium = 1) => {
+    const rawRows = candidates
+      .filter((row) => row.override?.salary_override == null)
+      .map((row) => {
+        const raw = rawSalaryFromProjectionRatio(row.projection, averageProjection, nextElasticity, averageSlotSalary);
+        return {
+          key: row.player.id,
+          rawSalary: row.projection > averageProjection ? raw * premium : raw,
+        };
+      });
+    const compressed = applySoftMaxCompression(rawRows);
+    return candidates.map((row) => ({
+      ...row,
+      salary: Number(row.override?.salary_override ?? compressed.get(row.player.id) ?? MIN_SALARY),
+    }));
+  };
 
-  let priced = priceAt(elasticity);
-  while (topLineupSalary(priced) <= salaryCap && elasticity < 1.6) {
+  let priced = priceAt(elasticity, aboveAveragePremium);
+  while (topLineupSalary(priced) <= salaryCap && elasticity < MAX_CALIBRATION_ELASTICITY) {
     elasticity = Number((elasticity + 0.05).toFixed(2));
-    priced = priceAt(elasticity);
+    priced = priceAt(elasticity, aboveAveragePremium);
   }
 
-  let premium = 1;
-  while (topLineupSalary(priced) <= salaryCap && premium < 1.25) {
-    premium = Number((premium + 0.05).toFixed(2));
-    priced = priced.map((row) => {
-      if (row.override?.salary_override != null || row.projection <= averageProjection) return row;
-      return { ...row, salary: clamp(roundToNearestHundred(row.salary * premium), MIN_SALARY, MAX_SALARY) };
-    });
+  while (topLineupSalary(priced) <= salaryCap && aboveAveragePremium < 1.25) {
+    aboveAveragePremium = Number((aboveAveragePremium + 0.05).toFixed(2));
+    priced = priceAt(elasticity, aboveAveragePremium);
   }
 
   return new Map(priced.map((row) => [row.player.id, row.salary]));

@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import { buildGameProjections, filterBettingGames } from '../../lib/betting/projections';
 import { getLeagueSnapshot } from '../../lib/league-data';
 import { formatPublicDateTime } from '../../lib/formatters';
@@ -19,27 +18,23 @@ function formatLineNumber(value: unknown, digits = 1) {
   return n > 0 ? `+${n.toFixed(digits)}` : n.toFixed(digits);
 }
 
-function probability(value: unknown) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return '-';
-  return `${Math.round(n * 100)}%`;
+function pickLabel(teamName: string, isFavorite: boolean) {
+  return `${teamName} ${isFavorite ? 'Favorite' : 'Underdog'}`;
 }
 
-function leanText(game: any, model: any) {
-  return model.homeWinProbability >= model.awayWinProbability
-    ? `${game.home_team_name} ${probability(model.homeWinProbability)}`
-    : `${game.away_team_name} ${probability(model.awayWinProbability)}`;
+function formatScore(game: any) {
+  if (String(game.status).toUpperCase() !== 'FINAL') return null;
+  if (game.away_score == null || game.home_score == null) return 'Final';
+  return `Final ${game.away_score}-${game.home_score}`;
 }
 
-export default async function BettingPage({ searchParams }: { searchParams: Promise<Record<string, string>> }) {
-  const params = await searchParams;
-  const market = params.market || 'all';
+export default async function BettingPage() {
   const data = await getLeagueSnapshot();
   if ('unavailable' in data && data.unavailable) return <main><h1>Weekly Lines & Picks</h1><p>{data.reason}</p></main>;
 
   const now = Date.now();
   const upcoming = filterBettingGames(data.schedule
-    .filter((game) => new Date(game.scheduled_at).getTime() > now && !['CANCELED'].includes(String(game.status))))
+    .filter((game) => new Date(game.scheduled_at).getTime() > now && !['CANCELED'].includes(String(game.status).toUpperCase())))
     .slice(0, 12);
   const seasonGameIds = data.schedule.filter((game) => game.season_id === data.season?.id).map((game) => game.id);
   const admin = adminClientSafe();
@@ -79,56 +74,78 @@ export default async function BettingPage({ searchParams }: { searchParams: Prom
         <div className="section-header-row">
           <div>
             <h2 className="section-title">Weekly Lines & Picks</h2>
-            <p className="muted">Picks only. No real-money betting is active. Next game: {nextGame ? formatPublicDateTime(nextGame.scheduled_at) : 'TBD'}.</p>
+            <p className="muted">Picks only — no real-money betting. Next game: {nextGame ? formatPublicDateTime(nextGame.scheduled_at) : 'TBD'}.</p>
           </div>
-          <p className="badge">{upcoming.length} game{upcoming.length === 1 ? '' : 's'}</p>
-        </div>
-        <div className="button-row">
-          <Link className="header-auth-link" href="/betting?market=all">All</Link>
-          <Link className="header-auth-link" href="/betting?market=moneyline">Moneyline</Link>
-          <Link className="header-auth-link" href="/betting?market=spread">Spread</Link>
-          <Link className="header-auth-link" href="/betting?market=total">Total</Link>
+          <p className="badge">{upcoming.length} {upcoming.length === 1 ? 'game' : 'games'}</p>
         </div>
       </section>
 
-      <section className="betting-grid">
-          {upcoming.map((game) => {
-            const model = projectionByGame.get(game.id)!;
-            const adminLine = lineByGame.get(game.id) as any;
-            const source = adminLine ? 'Admin Line' : 'Model Line';
-            const line = adminLine ? {
-              away_moneyline: adminLine.away_moneyline,
-              home_moneyline: adminLine.home_moneyline,
-              away_spread: adminLine.away_spread,
-              home_spread: adminLine.home_spread,
-              total: adminLine.total,
-            } : {
-              away_moneyline: model.awayMoneyline,
-              home_moneyline: model.homeMoneyline,
-              away_spread: model.awaySpread,
-              home_spread: model.homeSpread,
-              total: model.total,
-            };
+      <section className="card">
+        <div className="responsive-table">
+          <table className="table betting-lines-table">
+            <thead>
+              <tr>
+                <th>Game</th>
+                <th>Moneyline</th>
+                <th>Spread</th>
+                <th>Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {upcoming.map((game) => {
+                const model = projectionByGame.get(game.id)!;
+                const adminLine = lineByGame.get(game.id) as any;
+                const line = adminLine ? {
+                  away_moneyline: adminLine.away_moneyline,
+                  home_moneyline: adminLine.home_moneyline,
+                  away_spread: adminLine.away_spread,
+                  home_spread: adminLine.home_spread,
+                  total: adminLine.total,
+                } : {
+                  away_moneyline: model.awayMoneyline,
+                  home_moneyline: model.homeMoneyline,
+                  away_spread: model.awaySpread,
+                  home_spread: model.homeSpread,
+                  total: model.total,
+                };
+                const homeFavored = Number(line.home_spread) < Number(line.away_spread);
+                const awayFavored = !homeFavored;
+                const favorite = homeFavored ? game.home_team_name : game.away_team_name;
+                const underdog = homeFavored ? game.away_team_name : game.home_team_name;
+                const finalScore = formatScore(game);
 
-            return (
-              <article key={game.id} className="betting-card">
-                <div className="section-header-row">
-                  <div>
-                    <h3>{game.away_team_name} @ {game.home_team_name}</h3>
-                    <p className="muted">Puck drop: {formatPublicDateTime(game.scheduled_at)} - {game.status}</p>
-                  </div>
-                  <span className="badge">{source}</span>
-                </div>
-                {game.status === 'FINAL'
-                  ? <p className="muted">Final: {game.away_score}-{game.home_score}</p>
-                  : <p><strong>Projected score:</strong> {game.away_team_name} {model.projectedAwayGoals.toFixed(1)} - {game.home_team_name} {model.projectedHomeGoals.toFixed(1)}</p>}
-                {(market === 'all' || market === 'moneyline') && <div className="bet-line-row"><span>Lean</span><strong>{leanText(game, model)}</strong></div>}
-                {(market === 'all' || market === 'spread') && <div className="bet-line-row"><span>Spread</span><strong>{game.away_team_name} {formatLineNumber(line.away_spread)} / {game.home_team_name} {formatLineNumber(line.home_spread)}</strong></div>}
-                {(market === 'all' || market === 'total') && <div className="bet-line-row"><span>Total</span><strong>O/U {Number(line.total).toFixed(1)}</strong></div>}
-              </article>
-            );
-          })}
-          {!upcoming.length && <p className="muted">No upcoming games available for weekly markets.</p>}
+                return (
+                  <tr key={game.id}>
+                    <td>
+                      <div><strong>{game.away_team_name} @ {game.home_team_name}</strong></div>
+                      <div className="muted">{formatPublicDateTime(game.scheduled_at)}{finalScore ? ` · ${finalScore}` : ''}</div>
+                      <span className="badge">{adminLine ? 'Admin' : 'Model'}</span>
+                    </td>
+                    <td>
+                      <div className="bet-market-pills">
+                        <span className="bet-pill">{adminLine ? `${game.away_team_name} ML ${formatLineNumber(line.away_moneyline, 0)}` : pickLabel(game.away_team_name, awayFavored)}</span>
+                        <span className="bet-pill">{adminLine ? `${game.home_team_name} ML ${formatLineNumber(line.home_moneyline, 0)}` : pickLabel(game.home_team_name, homeFavored)}</span>
+                      </div>
+                    </td>
+                    <td>
+                      <div className="bet-market-pills">
+                        <span className="bet-pill">{favorite} -1.5</span>
+                        <span className="bet-pill">{underdog} +1.5</span>
+                      </div>
+                    </td>
+                    <td>
+                      <div className="bet-market-pills">
+                        <span className="bet-pill">O {Number(line.total || 10.5).toFixed(1)}</span>
+                        <span className="bet-pill">U {Number(line.total || 10.5).toFixed(1)}</span>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        {!upcoming.length && <p className="muted">No upcoming games available for weekly lines.</p>}
       </section>
     </main>
   );
