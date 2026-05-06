@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { formatPublicDateTime } from '../lib/formatters';
 
 type SlotKey = 'CAPTAIN' | 'SKATER_1' | 'SKATER_2' | 'SKATER_3' | 'SKATER_4' | 'GOALIE';
-type SortKey = 'name' | 'team' | 'position' | 'salary' | 'past_fppg';
+type SortKey = 'name' | 'team' | 'position' | 'salary' | 'fantasyPpg';
 
 const SLOT_CONFIG: SlotKey[] = ['CAPTAIN', 'SKATER_1', 'SKATER_2', 'SKATER_3', 'SKATER_4', 'GOALIE'];
 
@@ -14,121 +14,248 @@ function slotLabel(slot: SlotKey) {
   return slot.replace('_', ' ');
 }
 
+function currency(value: unknown) {
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(Number(value || 0));
+}
+
+function playerName(player: any) {
+  return player?.player?.name ?? 'Unknown Player';
+}
+
+function playerTeam(player: any) {
+  return player?.player?.team_name ?? 'Unassigned';
+}
+
+function isGoalie(player: any) {
+  return String(player?.player?.position || player?.position || '').toLowerCase().includes('goal');
+}
+
+function slotAllowsPlayer(slot: SlotKey, player: any) {
+  return slot === 'GOALIE' ? isGoalie(player) : !isGoalie(player);
+}
+
+function adjustedSalary(slot: SlotKey, player: any) {
+  return Number(player?.salary || 0) * (slot === 'CAPTAIN' ? 1.5 : 1);
+}
+
+function adjustedProjection(slot: SlotKey, player: any) {
+  return Number(player?.projection_points || 0) * (slot === 'CAPTAIN' ? 1.5 : 1);
+}
+
+function fantasyPpg(player: any) {
+  const gamesPlayed = Number(player?.stats?.games_played || 0);
+  const actualFantasy = Number(player?.stats?.fantasy_points ?? 0);
+  if (gamesPlayed > 0) return actualFantasy / gamesPlayed;
+  const projected = Number(player?.projection_points ?? player?.baseline_points ?? 0);
+  return Number.isFinite(projected) ? projected : 0;
+}
+
+function hasActualFantasyPpg(player: any) {
+  return Number(player?.stats?.games_played || 0) > 0;
+}
+
+function availabilityBadge(status: unknown) {
+  const normalized = String(status || 'AVAILABLE').toUpperCase();
+  if (normalized === 'OUT') return <span className="availability-badge is-out" title="Out">O</span>;
+  if (normalized === 'QUESTIONABLE') return <span className="availability-badge is-questionable" title="Questionable">Q</span>;
+  return null;
+}
+
+function filterForSlot(slot: SlotKey): 'SKATERS' | 'GOALIES' {
+  return slot === 'GOALIE' ? 'GOALIES' : 'SKATERS';
+}
+
+function firstEmptySlot(slots: any[]) {
+  return (SLOT_CONFIG.find((slot) => !slots.find((row) => row.slot === slot)?.player_id) ?? 'CAPTAIN') as SlotKey;
+}
+
+function nextEmptySlotAfter(current: SlotKey, slots: any[]) {
+  const startIndex = SLOT_CONFIG.indexOf(current);
+  const ordered = [...SLOT_CONFIG.slice(startIndex + 1), ...SLOT_CONFIG.slice(0, startIndex + 1)];
+  return (ordered.find((slot) => !slots.find((row) => row.slot === slot)?.player_id) ?? current) as SlotKey;
+}
+
+function pointScorerRows(rows: any[]) {
+  if (!rows?.length) return <p className="muted">No points recorded yet.</p>;
+  return (
+    <table className="table dfs-mini-table">
+      <tbody>
+        {rows.map((row: any) => (
+          <tr key={row.id}>
+            <td>#{row.jersey ?? '-'}</td>
+            <td>{row.player_name}</td>
+            <td>G {row.goals}</td>
+            <td>A {row.assists}</td>
+            <td>{Number(row.fantasy_points || 0).toFixed(1)} FP</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 export default function DfsClient() {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<any>({ contests: [], slates: [], slatePlayers: [], slateGames: [], myEntries: [], leaderboardEntries: [] });
   const [selectedContest, setSelectedContest] = useState('');
   const [selectedSlate, setSelectedSlate] = useState('');
-
   const [builderOpen, setBuilderOpen] = useState(false);
-  const [slotSelectorOpen, setSlotSelectorOpen] = useState(false);
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
   const [activeSlot, setActiveSlot] = useState<SlotKey>('CAPTAIN');
   const [slots, setSlots] = useState<any[]>(SLOT_CONFIG.map((slot) => ({ slot, player_id: '' })));
-
   const [search, setSearch] = useState('');
   const [positionFilter, setPositionFilter] = useState<'ALL' | 'SKATERS' | 'GOALIES'>('ALL');
-  const [sortKey, setSortKey] = useState<SortKey>('salary');
+  const [teamFilter, setTeamFilter] = useState('ALL');
+  const [sortKey, setSortKey] = useState<SortKey>('fantasyPpg');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [msg, setMsg] = useState('');
-
+  const [loadError, setLoadError] = useState('');
   const [selectedGame, setSelectedGame] = useState<any>(null);
   const [selectedGameStats, setSelectedGameStats] = useState<any[]>([]);
 
-  const currentContest = useMemo(() => data.contests.find((c: any) => c.id === selectedContest), [data.contests, selectedContest]);
+  const currentContest = useMemo(() => data.contests.find((contest: any) => contest.id === selectedContest), [data.contests, selectedContest]);
   const contestLocked = Boolean(currentContest?.lock_at && new Date(currentContest.lock_at).getTime() <= Date.now());
+  const salaryCap = Number(currentContest?.salary_cap || 50000);
 
   const pickDefaultContest = (contests: any[]) => {
     const ordered = [...(contests ?? [])].sort((a: any, b: any) => new Date(a.lock_at || 0).getTime() - new Date(b.lock_at || 0).getTime());
-    const active = ordered.filter((c: any) => ['open', 'live'].includes(String(c.status || '').toLowerCase()));
+    const active = ordered.filter((contest: any) => ['open', 'live'].includes(String(contest.status || '').toLowerCase()));
     const now = Date.now();
-    return active.find((c: any) => new Date(c.lock_at || 0).getTime() > now) || active[0] || ordered[0] || null;
+    return active.find((contest: any) => new Date(contest.lock_at || 0).getTime() > now) || active[0] || ordered[0] || null;
   };
 
   async function load(opts?: { contestId?: string; slateId?: string }) {
     setLoading(true);
-    const contestId = opts?.contestId ?? selectedContest;
-    const slateId = opts?.slateId ?? selectedSlate;
-    const q = new URLSearchParams();
-    if (contestId) q.set('contest_id', contestId);
-    if (slateId) q.set('slate_id', slateId);
-    const res = await fetch(`/api/dfs${q.toString() ? `?${q.toString()}` : ''}`);
-    const json = await res.json();
+    try {
+      const contestId = opts?.contestId ?? selectedContest;
+      const slateId = opts?.slateId ?? selectedSlate;
+      const params = new URLSearchParams();
+      if (contestId) params.set('contest_id', contestId);
+      if (slateId) params.set('slate_id', slateId);
+      const res = await fetch(`/api/dfs${params.toString() ? `?${params.toString()}` : ''}`, { cache: 'no-store' });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || 'Unable to load DFS contest data.');
 
-    const chosen = contestId ? (json.contests ?? []).find((c: any) => c.id === contestId) : pickDefaultContest(json.contests ?? []);
-    const nextContestId = chosen?.id ?? '';
-    const nextSlateId = chosen?.slate_id ?? json.recommendedSlateId ?? '';
+      const apiSelectedContest = json.selectedContestId
+        ? (json.contests ?? []).find((contest: any) => contest.id === json.selectedContestId)
+        : null;
+      const chosen = apiSelectedContest
+        ?? (contestId ? (json.contests ?? []).find((contest: any) => contest.id === contestId) : null)
+        ?? pickDefaultContest(json.contests ?? []);
+      const nextContestId = chosen?.id ?? json.selectedContestId ?? json.recommendedContestId ?? '';
+      const nextSlateId = json.selectedSlateId ?? chosen?.slate_id ?? json.recommendedSlateId ?? '';
 
-    setData(json);
-    if (nextContestId !== selectedContest) setSelectedContest(nextContestId);
-    if (nextSlateId !== selectedSlate) setSelectedSlate(nextSlateId);
-    setLoading(false);
+      setData(json);
+      setSelectedContest(nextContestId);
+      setSelectedSlate(nextSlateId);
+      setMsg('');
+      setLoadError('');
+    } catch (error: any) {
+      const message = error?.message || 'Unable to load DFS contest data.';
+      setMsg(message);
+      setLoadError(message);
+    } finally {
+      setLoading(false);
+    }
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { void load(); }, []);
   useEffect(() => {
     if (!selectedContest) return;
-    const contest = data.contests.find((c: any) => c.id === selectedContest);
-    if (!contest) return;
-    load({ contestId: selectedContest, slateId: contest.slate_id });
-  }, [selectedContest]);
+    const contest = data.contests.find((row: any) => row.id === selectedContest);
+    if (!contest || contest.slate_id === selectedSlate) return;
+    void load({ contestId: selectedContest, slateId: contest.slate_id });
+  }, [selectedContest, selectedSlate, data.contests]);
 
   const slotByPlayer = useMemo(() => {
     const map = new Map<string, SlotKey>();
-    slots.forEach((s) => { if (s.player_id) map.set(s.player_id, s.slot); });
+    slots.forEach((slot) => { if (slot.player_id) map.set(slot.player_id, slot.slot); });
     return map;
   }, [slots]);
 
-  function slotAllowsPlayer(slot: SlotKey, player: any) {
-    const pos = String(player.player?.position || player.position || '').toLowerCase();
-    const isGoalie = pos.includes('goal');
-    return slot === 'GOALIE' ? isGoalie : !isGoalie;
-  }
+  const activeSlotPlayer = useMemo(() => {
+    const active = slots.find((slot) => slot.slot === activeSlot)?.player_id;
+    return data.slatePlayers.find((player: any) => player.player_id === active) ?? null;
+  }, [slots, activeSlot, data.slatePlayers]);
 
-  function getPastFppg(player: any) {
-    const current = Number(player.stats?.fantasy_points_avg);
-    if (Number.isFinite(current) && current > 0) return current;
-    const historical = Number(player.historical_projection_input);
-    if (Number.isFinite(historical) && historical > 0) return historical;
-    return null;
-  }
-
-  const salaryUsed = useMemo(() => slots.reduce((sum, s) => {
-    const p = data.slatePlayers.find((r: any) => r.player_id === s.player_id);
-    return sum + (p ? Number(p.salary) * (s.slot === 'CAPTAIN' ? 1.5 : 1) : 0);
+  const salaryUsed = useMemo(() => slots.reduce((sum, slot) => {
+    const player = data.slatePlayers.find((row: any) => row.player_id === slot.player_id);
+    return sum + (player ? adjustedSalary(slot.slot, player) : 0);
   }, 0), [slots, data.slatePlayers]);
 
-  const salaryRemaining = Number(currentContest?.salary_cap || 0) - salaryUsed;
-  const missingSlots = slots.filter((s) => !s.player_id).map((s) => s.slot as SlotKey);
+  const projectedPoints = useMemo(() => slots.reduce((sum, slot) => {
+    const player = data.slatePlayers.find((row: any) => row.player_id === slot.player_id);
+    return sum + (player ? adjustedProjection(slot.slot, player) : 0);
+  }, 0), [slots, data.slatePlayers]);
+
+  const salaryRemaining = salaryCap - salaryUsed;
+  const missingSlots = slots.filter((slot) => !slot.player_id).map((slot) => slot.slot as SlotKey);
   const lineupComplete = missingSlots.length === 0;
+  const salaryWithoutActiveSlot = salaryUsed - (activeSlotPlayer ? adjustedSalary(activeSlot, activeSlotPlayer) : 0);
+
+  const teamOptions = useMemo<string[]>(() => Array.from(new Set<string>((data.slatePlayers ?? []).map((player: any) => playerTeam(player)).filter(Boolean))).sort(), [data.slatePlayers]);
+
+  function disabledReason(player: any) {
+    const usedSlot = slotByPlayer.get(player.player_id);
+    if (usedSlot && usedSlot !== activeSlot) return 'Already selected';
+    if (!slotAllowsPlayer(activeSlot, player)) return 'Invalid slot';
+    if (String(player.availability_status || 'AVAILABLE').toUpperCase() === 'OUT') return 'Out';
+    if (salaryWithoutActiveSlot + adjustedSalary(activeSlot, player) > salaryCap) return 'Over salary cap';
+    return '';
+  }
+
+  const slatePlayers = data.slatePlayers ?? [];
+  const slotCompatiblePlayers = useMemo(() => slatePlayers.filter((player: any) => slotAllowsPlayer(activeSlot, player)), [slatePlayers, activeSlot]);
 
   const visiblePlayers = useMemo(() => {
     const term = search.trim().toLowerCase();
-    return (data.slatePlayers ?? []).filter((p: any) => {
-      const pos = String(p.player?.position || p.position || '').toLowerCase();
-      const isGoalie = pos.includes('goal');
-      if (activeSlot === 'GOALIE' && !isGoalie) return false;
-      if (activeSlot !== 'GOALIE' && isGoalie) return false;
-      if (positionFilter === 'GOALIES' && !isGoalie) return false;
-      if (positionFilter === 'SKATERS' && isGoalie) return false;
-      if (!term) return true;
-      return `${p.player?.name ?? ''} ${p.player?.team_name ?? ''}`.toLowerCase().includes(term);
-    }).sort((a: any, b: any) => {
-      const alpha = (v: any) => String(v || '');
-      let result = 0;
-      if (sortKey === 'name') result = alpha(a.player?.name).localeCompare(alpha(b.player?.name));
-      else if (sortKey === 'team') result = alpha(a.player?.team_name).localeCompare(alpha(b.player?.team_name));
-      else if (sortKey === 'position') result = alpha(a.player?.position || a.position).localeCompare(alpha(b.player?.position || b.position));
-      else if (sortKey === 'salary') result = Number(a.salary || 0) - Number(b.salary || 0);
-      else result = Number(getPastFppg(a) || 0) - Number(getPastFppg(b) || 0);
-      return sortDir === 'asc' ? result : -result;
+    return slatePlayers
+      .filter((player: any) => {
+        if (positionFilter === 'GOALIES' && !isGoalie(player)) return false;
+        if (positionFilter === 'SKATERS' && isGoalie(player)) return false;
+        if (teamFilter !== 'ALL' && playerTeam(player) !== teamFilter) return false;
+        if (!term) return true;
+        return `${playerName(player)} ${playerTeam(player)} ${player.player?.position ?? player.position ?? ''}`.toLowerCase().includes(term);
+      })
+      .sort((a: any, b: any) => {
+        const alpha = (value: any) => String(value || '');
+        let result = 0;
+        if (sortKey === 'name') result = alpha(playerName(a)).localeCompare(alpha(playerName(b)));
+        else if (sortKey === 'team') result = alpha(playerTeam(a)).localeCompare(alpha(playerTeam(b)));
+        else if (sortKey === 'position') result = alpha(a.player?.position || a.position).localeCompare(alpha(b.player?.position || b.position));
+        else if (sortKey === 'fantasyPpg') result = fantasyPpg(a) - fantasyPpg(b);
+        else result = Number(a.salary || 0) - Number(b.salary || 0);
+        return sortDir === 'asc' ? result : -result;
+      });
+  }, [slatePlayers, search, positionFilter, teamFilter, sortKey, sortDir]);
+
+  function sortPool(key: SortKey) {
+    setSortKey((currentKey) => {
+      setSortDir((currentDir) => currentKey === key ? (currentDir === 'asc' ? 'desc' : 'asc') : key === 'name' || key === 'team' || key === 'position' ? 'asc' : 'desc');
+      return key;
     });
-  }, [data.slatePlayers, activeSlot, positionFilter, search, sortKey, sortDir]);
+  }
+
+  function sortSuffix(key: SortKey) {
+    if (sortKey !== key) return '';
+    return sortDir === 'asc' ? ' up' : ' down';
+  }
+
+  const playerPoolEmptyReason = useMemo(() => {
+    if (loadError) return `API failed: ${loadError}`;
+    if (currentContest?.slate_id && selectedSlate && currentContest.slate_id !== selectedSlate) {
+      return 'Wrong slate selected for this contest.';
+    }
+    if (!slatePlayers.length) return 'No slate players found for the selected slate.';
+    if (!slotCompatiblePlayers.length) return `All players filtered out for ${slotLabel(activeSlot)}.`;
+    if (!visiblePlayers.length) return 'All players filtered out by search, team, or position filters.';
+    return '';
+  }, [loadError, currentContest?.slate_id, selectedSlate, slatePlayers.length, slotCompatiblePlayers.length, visiblePlayers.length, activeSlot]);
 
   async function post(action: string, payload: any) {
     const res = await fetch('/api/dfs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, payload }) });
     const json = await res.json();
-    if (!res.ok) throw new Error(json.error || 'Request failed');
+    if (!res.ok) throw new Error(json?.error || 'Request failed');
     return json;
   }
 
@@ -142,80 +269,104 @@ export default function DfsClient() {
       setEditingEntryId(null);
       setSlots(SLOT_CONFIG.map((slot) => ({ slot, player_id: '' })));
       await load({ contestId: selectedContest, slateId: selectedSlate });
-    } catch (e: any) {
-      setMsg(e.message);
+    } catch (error: any) {
+      setMsg(error.message);
     }
   }
 
   function startSubmit() {
     setEditingEntryId(null);
-    setSlots(SLOT_CONFIG.map((slot) => ({ slot, player_id: '' })));
+    const emptySlots = SLOT_CONFIG.map((slot) => ({ slot, player_id: '' }));
+    setSlots(emptySlots);
     setActiveSlot('CAPTAIN');
+    setPositionFilter(filterForSlot('CAPTAIN'));
     setBuilderOpen(true);
+    if (currentContest?.slate_id && currentContest.slate_id !== selectedSlate) {
+      void load({ contestId: selectedContest, slateId: currentContest.slate_id });
+    } else if (selectedContest && !slatePlayers.length) {
+      void load({ contestId: selectedContest, slateId: selectedSlate || currentContest?.slate_id });
+    }
   }
 
   function editEntry(entry: any) {
-    const contest = data.contests.find((c: any) => c.id === entry.contest_id);
+    const contest = data.contests.find((row: any) => row.id === entry.contest_id);
     const locked = Boolean(contest?.lock_at && new Date(contest.lock_at).getTime() <= Date.now());
     if (locked) return;
+    const entrySlots = SLOT_CONFIG.map((slot) => ({ slot, player_id: (entry.slots ?? []).find((row: any) => row.slot === slot)?.player_id || '' }));
+    const nextSlot = firstEmptySlot(entrySlots);
     setEditingEntryId(entry.id);
-    setSlots(SLOT_CONFIG.map((slot) => ({ slot, player_id: (entry.slots ?? []).find((r: any) => r.slot === slot)?.player_id || '' })));
-    setActiveSlot('CAPTAIN');
+    setSlots(entrySlots);
+    setActiveSlot(nextSlot);
+    setPositionFilter(filterForSlot(nextSlot));
     setBuilderOpen(true);
+    if (contest?.slate_id && contest.slate_id !== selectedSlate) {
+      void load({ contestId: contest.id, slateId: contest.slate_id });
+    }
   }
 
   function choosePlayer(player: any) {
-    const used = slotByPlayer.get(player.player_id);
-    if (used) return;
-    const targetIdx = slots.findIndex((s) => s.slot === activeSlot);
-    setSlots((prev) => {
-      const next = [...prev];
-      if (targetIdx >= 0 && slotAllowsPlayer(activeSlot, player)) {
-        next[targetIdx] = { ...next[targetIdx], player_id: player.player_id };
-        return next;
-      }
-      const fallback = next.findIndex((s) => !s.player_id && slotAllowsPlayer(s.slot, player));
-      if (fallback >= 0) next[fallback] = { ...next[fallback], player_id: player.player_id };
-      return next;
-    });
-    setSlotSelectorOpen(false);
+    if (disabledReason(player)) return;
+    const nextSlots = slots.map((slot) => slot.slot === activeSlot ? { ...slot, player_id: player.player_id } : slot);
+    const nextSlot = nextEmptySlotAfter(activeSlot, nextSlots);
+    setSlots(nextSlots);
+    setActiveSlot(nextSlot);
+    setPositionFilter(filterForSlot(nextSlot));
+  }
+
+  function chooseSlot(slot: SlotKey) {
+    setActiveSlot(slot);
+    setPositionFilter(filterForSlot(slot));
+  }
+
+  function removeSlot(slot: SlotKey) {
+    setSlots((prev) => prev.map((row) => row.slot === slot ? { ...row, player_id: '' } : row));
+    setActiveSlot(slot);
+    setPositionFilter(filterForSlot(slot));
+  }
+
+  function changePositionFilter(value: 'ALL' | 'SKATERS' | 'GOALIES') {
+    if (value === 'ALL') {
+      setPositionFilter(value);
+      return;
+    }
+    setPositionFilter(value === filterForSlot(activeSlot) ? value : filterForSlot(activeSlot));
+  }
+
+  function clearFilters() {
+    setSearch('');
+    setTeamFilter('ALL');
+    setPositionFilter(filterForSlot(activeSlot));
   }
 
   async function openGameStats(game: any) {
     setSelectedGame(game);
-    const res = await fetch(`/api/games/${game.id}/stats`);
+    const res = await fetch(`/api/games/${game.id}/stats`, { cache: 'no-store' });
     const json = await res.json();
+    if (!res.ok) {
+      setMsg(json?.error || 'Unable to load game stats.');
+      setSelectedGameStats([]);
+      return;
+    }
     setSelectedGameStats(json.stats ?? []);
   }
 
   if (loading) {
-    return (
-      <main>
-        <h1>DFS Contest Lobby</h1>
-        <section className="card"><p className="muted">Loading next contest, player pool, and slate games…</p></section>
-      </main>
-    );
+    return <section className="card"><p className="muted">Loading next contest, player pool, and slate games...</p></section>;
   }
 
   if (!currentContest) {
-    return (
-      <main>
-        <h1>DFS Contest Lobby</h1>
-        <section className="card"><p className="muted">No active contest is available right now.</p></section>
-      </main>
-    );
+    return <section className="card"><p className="muted">No active contest is available right now.</p>{msg && <p>{msg}</p>}</section>;
   }
 
   return (
-    <main>
-      <h1>DFS Contest Lobby</h1>
+    <>
       {msg && <p>{msg}</p>}
 
       <section className="card" style={{ marginBottom: 12 }}>
         <div className="section-header-row">
           <div>
             <h2 className="section-title" style={{ marginBottom: 4 }}>{currentContest.name}</h2>
-            <p className="muted">Locks {formatPublicDateTime(currentContest.lock_at)} · Salary Cap {currentContest.salary_cap} · {String(currentContest.status || '').toUpperCase()}</p>
+            <p className="muted">Locks {formatPublicDateTime(currentContest.lock_at)} - Salary Cap {currency(currentContest.salary_cap)} - {String(currentContest.status || '').toUpperCase()}</p>
           </div>
           <button type="button" onClick={startSubmit} disabled={contestLocked}>Submit Lineup</button>
         </div>
@@ -229,19 +380,13 @@ export default function DfsClient() {
 
       <section className="card" style={{ marginBottom: 12 }}>
         <h2 className="section-title">Leaderboard</h2>
-        <div className="desktop-only responsive-table">
-          <table className="table"><thead><tr><th>Rank</th><th>Entry</th><th>User</th><th>Points</th><th>Submitted</th></tr></thead><tbody>
-            {(data.leaderboardEntries ?? []).map((e: any, idx: number) => <tr key={e.id}><td>{e.rank ?? idx + 1}</td><td>{e.display_label || `Entry #${idx + 1}`}</td><td>{e.user_display}</td><td>{Number(e.actual_points || 0).toFixed(2)}</td><td>{formatPublicDateTime(e.created_at)}</td></tr>)}
-          </tbody></table>
-          {!data.leaderboardEntries?.length && <p className="muted">No entries yet for this contest.</p>}
-        </div>
-        <div className="mobile-only stack-list">
-          {(data.leaderboardEntries ?? []).map((e: any, idx: number) => (
-            <article key={e.id} className="list-card compact">
-              <p><strong>#{e.rank ?? idx + 1}</strong> · {e.display_label || `Entry #${idx + 1}`}</p>
-              <p className="muted">{e.user_display} · {Number(e.actual_points || 0).toFixed(2)} pts</p>
-            </article>
-          ))}
+        <div className="responsive-table">
+          <table className="table">
+            <thead><tr><th>Rank</th><th>Entry</th><th>User</th><th>Points</th><th>Submitted</th></tr></thead>
+            <tbody>
+              {(data.leaderboardEntries ?? []).map((entry: any, idx: number) => <tr key={entry.id}><td>{entry.rank ?? idx + 1}</td><td>{entry.display_label || `Entry #${idx + 1}`}</td><td>{entry.user_display}</td><td>{Number(entry.actual_points || 0).toFixed(2)}</td><td>{formatPublicDateTime(entry.created_at)}</td></tr>)}
+            </tbody>
+          </table>
           {!data.leaderboardEntries?.length && <p className="muted">No entries yet for this contest.</p>}
         </div>
       </section>
@@ -249,35 +394,43 @@ export default function DfsClient() {
       <section className="card" style={{ marginBottom: 12 }}>
         <h2 className="section-title">My Entries</h2>
         <div className="stack-list">
-          {(data.myEntries ?? []).filter((e: any) => e.contest_id === selectedContest).map((e: any, idx: number) => {
-            const contest = data.contests.find((c: any) => c.id === e.contest_id);
+          {(data.myEntries ?? []).filter((entry: any) => entry.contest_id === selectedContest).map((entry: any, idx: number) => {
+            const contest = data.contests.find((row: any) => row.id === entry.contest_id);
             const locked = Boolean(contest?.lock_at && new Date(contest.lock_at).getTime() <= Date.now());
             return (
-              <article key={e.id} className="list-card compact">
-                <p><strong>{e.display_label || `Entry #${idx + 1}`}</strong></p>
-                <p className="muted">Score {Number(e.actual_points || 0).toFixed(2)} · {locked ? 'Locked' : 'Editable'}</p>
-                <button type="button" onClick={() => editEntry(e)} disabled={locked}>{locked ? 'Locked' : 'Update Entry'}</button>
+              <article key={entry.id} className="list-card compact">
+                <p><strong>{entry.display_label || `Entry #${idx + 1}`}</strong></p>
+                <p className="muted">Score {Number(entry.actual_points || 0).toFixed(2)} - {locked ? 'Locked' : 'Editable'}</p>
+                <button type="button" onClick={() => editEntry(entry)} disabled={locked}>{locked ? 'Locked' : 'Update Entry'}</button>
               </article>
             );
           })}
-          {!data.myEntries?.filter((e: any) => e.contest_id === selectedContest).length && <p className="muted">No entries submitted yet.</p>}
+          {!data.myEntries?.filter((entry: any) => entry.contest_id === selectedContest).length && <p className="muted">No entries submitted yet.</p>}
         </div>
       </section>
 
       <section className="card">
         <h2 className="section-title">Games in This Slate</h2>
-        <div className="desktop-only responsive-table">
-          <table className="table"><thead><tr><th>Time</th><th>Matchup</th><th>Status</th><th>Score</th><th></th></tr></thead><tbody>
-            {(data.slateGames ?? []).map((g: any) => <tr key={g.id}><td>{formatPublicDateTime(g.scheduled_at)}</td><td>{g.away_team_name} @ {g.home_team_name}</td><td>{g.status}</td><td>{g.away_score} - {g.home_score}</td><td><button type="button" onClick={() => openGameStats(g)}>Stats</button></td></tr>)}
-          </tbody></table>
-          {!data.slateGames?.length && <p className="muted">No games attached to this slate.</p>}
-        </div>
-        <div className="mobile-only game-slate-list">
-          {(data.slateGames ?? []).map((g: any) => (
-            <article className="game-card" key={g.id}>
-              <p><strong>{g.away_team_name}</strong> @ <strong>{g.home_team_name}</strong></p>
-              <p className="muted">{formatPublicDateTime(g.scheduled_at)} · {g.status} · {g.away_score}-{g.home_score}</p>
-              <button type="button" onClick={() => openGameStats(g)}>View Game Stats</button>
+        <div className="stack-list">
+          {(data.slateGames ?? []).map((game: any) => (
+            <article className="list-card" key={game.id}>
+              <div className="section-header-row">
+                <div>
+                  <p><strong>{game.away_team_name}</strong> @ <strong>{game.home_team_name}</strong></p>
+                  <p className="muted">{formatPublicDateTime(game.scheduled_at)} - {game.status} - {game.away_score}-{game.home_score}</p>
+                </div>
+                <button type="button" onClick={() => openGameStats(game)}>Full Stats</button>
+              </div>
+              <div className="dfs-game-scorers">
+                <div>
+                  <h3 className="card-title">{game.away_team_name} point scorers</h3>
+                  {pointScorerRows(game.point_scorers?.away ?? [])}
+                </div>
+                <div>
+                  <h3 className="card-title">{game.home_team_name} point scorers</h3>
+                  {pointScorerRows(game.point_scorers?.home ?? [])}
+                </div>
+              </div>
             </article>
           ))}
           {!data.slateGames?.length && <p className="muted">No games attached to this slate.</p>}
@@ -286,69 +439,118 @@ export default function DfsClient() {
 
       {builderOpen && (
         <div className="modal-overlay">
-          <div className="modal-card card dfs-builder-modal">
-            <h2 className="section-title">{editingEntryId ? 'Update Lineup' : 'Build Lineup'}</h2>
-            <p className="muted">Remaining: {Math.round(salaryRemaining)} · Filled: {6 - missingSlots.length}/6 · {salaryRemaining >= 0 ? 'Under Cap' : 'Over Cap'}</p>
-            <div className="dfs-lineup-stack">
-              {slots.map((s) => {
-                const player = data.slatePlayers.find((p: any) => p.player_id === s.player_id);
-                return (
-                  <div key={s.slot} className={`dfs-slot ${s.slot === 'CAPTAIN' ? 'is-captain' : ''}`} draggable={Boolean(player)} onDragStart={(e) => e.dataTransfer.setData('text/plain', s.slot)} onDragOver={(e) => e.preventDefault()} onDrop={(e) => {
-                    const src = e.dataTransfer.getData('text/plain') as SlotKey;
-                    if (!src || src === s.slot) return;
-                    const a = slots.find((x) => x.slot === src)?.player_id || '';
-                    const b = slots.find((x) => x.slot === s.slot)?.player_id || '';
-                    const aP = data.slatePlayers.find((p: any) => p.player_id === a);
-                    const bP = data.slatePlayers.find((p: any) => p.player_id === b);
-                    if ((aP && !slotAllowsPlayer(s.slot, aP)) || (bP && !slotAllowsPlayer(src, bP))) return;
-                    setSlots((prev) => prev.map((row) => row.slot === src ? { ...row, player_id: b } : row.slot === s.slot ? { ...row, player_id: a } : row));
-                  }}>
-                    <button type="button" className="link-button" onClick={() => { setActiveSlot(s.slot); setSlotSelectorOpen(true); }}>
-                      <div className="dfs-slot-label">{slotLabel(s.slot)}</div>
-                      <div className="dfs-slot-player">{player ? `${player.player?.name} · ${player.player?.team_name}` : 'Tap to choose player'}</div>
-                    </button>
-                    {player && <button type="button" onClick={() => setSlots((prev) => prev.map((x) => x.slot === s.slot ? { ...x, player_id: '' } : x))}>✕</button>}
-                  </div>
-                );
-              })}
+          <div className="modal-card card dfs-builder-modal-wide">
+            <div className="section-header-row">
+              <div>
+                <h2 className="section-title">{editingEntryId ? 'Update Lineup' : 'Build Lineup'}</h2>
+                <p className="muted">Used {currency(salaryUsed)} - Remaining {currency(salaryRemaining)} - Filled {6 - missingSlots.length}/6 - Projected {projectedPoints.toFixed(2)}</p>
+              </div>
+              <button type="button" onClick={() => setBuilderOpen(false)}>Close</button>
             </div>
-            {!lineupComplete && <p className="muted">Missing: {missingSlots.map(slotLabel).join(', ')}</p>}
-            <div className="form-actions">
-              <button type="button" onClick={submitLineup} disabled={!lineupComplete || salaryRemaining < 0}>{editingEntryId ? 'Update Entry' : 'Submit Entry'}</button>
-              <button type="button" onClick={() => setBuilderOpen(false)}>Cancel</button>
-            </div>
-          </div>
-        </div>
-      )}
 
-      {slotSelectorOpen && (
-        <div className="modal-overlay">
-          <div className="modal-card card dfs-builder-modal">
-            <h2 className="section-title">Select {slotLabel(activeSlot)}</h2>
-            <div className="dfs-pool-controls" style={{ marginBottom: 8 }}>
-              <input placeholder="Search player or team" value={search} onChange={(e) => setSearch(e.target.value)} />
-              <select value={positionFilter} onChange={(e) => setPositionFilter(e.target.value as any)}>
-                <option value="ALL">All</option><option value="SKATERS">Skaters</option><option value="GOALIES">Goalies</option>
-              </select>
-            </div>
-            <div className="stack-list dfs-scroll-list">
-              {visiblePlayers.map((p: any) => {
-                const used = slotByPlayer.get(p.player_id);
-                const invalid = !slotAllowsPlayer(activeSlot, p) || Boolean(used);
-                return (
-                  <article key={p.id} className={`list-card compact ${invalid ? 'dfs-row-muted' : ''}`}>
-                    <p><strong>{p.player?.name}</strong> {used && <span className="badge">In {slotLabel(used)}</span>}</p>
-                    <p className="muted">{p.player?.team_name} · {p.player?.position || p.position} · ${activeSlot === 'CAPTAIN' ? Math.round(Number(p.salary || 0) * 1.5) : p.salary}{activeSlot === 'CAPTAIN' ? ' (Captain 1.5x)' : ''} · Past FPPG {getPastFppg(p)?.toFixed(2) || '—'}</p>
-                    <button type="button" onClick={() => choosePlayer(p)} disabled={invalid}>Add</button>
-                  </article>
-                );
-              })}
-              {!visiblePlayers.length && <p className="muted">No players match these filters.</p>}
-            </div>
-            <div className="form-actions">
-              <button type="button" onClick={() => setSlotSelectorOpen(false)}>Back to Builder</button>
-              <button type="button" onClick={() => setSortDir((p) => (p === 'asc' ? 'desc' : 'asc'))}>Sort {sortDir === 'asc' ? '↑' : '↓'}</button>
-              <button type="button" onClick={() => setSortKey(sortKey === 'salary' ? 'past_fppg' : 'salary')}>Sort Key: {sortKey === 'salary' ? 'Salary' : sortKey === 'past_fppg' ? 'Past FPPG' : sortKey}</button>
+            <div className="dfs-builder-grid">
+              <aside className="dfs-lineup-panel">
+                <div className="dfs-lineup-summary">
+                  <strong>{currency(salaryCap)} Cap</strong>
+                  <span>{salaryRemaining >= 0 ? `${currency(salaryRemaining)} remaining` : `${currency(Math.abs(salaryRemaining))} over cap`}</span>
+                </div>
+                <div className="dfs-lineup-stack">
+                  {slots.map((slot) => {
+                    const player = data.slatePlayers.find((row: any) => row.player_id === slot.player_id);
+                    return (
+                      <div
+                        key={slot.slot}
+                        role="button"
+                        tabIndex={0}
+                        className={`dfs-slot ${activeSlot === slot.slot ? 'is-active' : ''} ${slot.slot === 'CAPTAIN' ? 'is-captain' : ''} ${slot.slot === 'GOALIE' ? 'is-goalie' : ''}`}
+                        onClick={() => chooseSlot(slot.slot)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' || event.key === ' ') chooseSlot(slot.slot);
+                        }}
+                      >
+                        <div>
+                          <div className="dfs-slot-label">{slotLabel(slot.slot)}</div>
+                          <div className="dfs-slot-player">{player ? `${playerName(player)} - ${playerTeam(player)}` : 'Choose player'}</div>
+                          {player && <div className="muted">{currency(adjustedSalary(slot.slot, player))} - {adjustedProjection(slot.slot, player).toFixed(2)} proj</div>}
+                        </div>
+                        {player && (
+                          <button
+                            type="button"
+                            className="dfs-slot-remove"
+                            aria-label={`Remove ${playerName(player)} from ${slotLabel(slot.slot)}`}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              removeSlot(slot.slot);
+                            }}
+                          >
+                            X
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                {salaryRemaining < 0 && <p>Lineup is over the salary cap.</p>}
+                <div className="form-actions">
+                  <button type="button" onClick={submitLineup} disabled={!lineupComplete || salaryRemaining < 0}>{editingEntryId ? 'Update Entry' : 'Submit Entry'}</button>
+                  <button type="button" onClick={() => {
+                    setSlots(SLOT_CONFIG.map((slot) => ({ slot, player_id: '' })));
+                    chooseSlot('CAPTAIN');
+                  }}>Clear</button>
+                </div>
+              </aside>
+
+              <section className="dfs-player-pool">
+                <div className="dfs-pool-controls">
+                  <input placeholder="Search player or team" value={search} onChange={(event) => setSearch(event.target.value)} />
+                  <select value={positionFilter} onChange={(event) => changePositionFilter(event.target.value as any)}>
+                    <option value="ALL">All</option>
+                    <option value="SKATERS">Skaters</option>
+                    <option value="GOALIES">Goalies</option>
+                  </select>
+                  <select value={teamFilter} onChange={(event) => setTeamFilter(event.target.value)}>
+                    <option value="ALL">All Teams</option>
+                    {teamOptions.map((team) => <option key={team} value={team}>{team}</option>)}
+                  </select>
+                  <button type="button" onClick={clearFilters}>Clear filters</button>
+                </div>
+                <div className="responsive-table dfs-scroll-table">
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th><button type="button" className="table-sort" onClick={() => sortPool('name')}>Name{sortSuffix('name')}</button></th>
+                        <th><button type="button" className="table-sort" onClick={() => sortPool('team')}>Team{sortSuffix('team')}</button></th>
+                        <th><button type="button" className="table-sort" onClick={() => sortPool('position')}>Pos{sortSuffix('position')}</button></th>
+                        <th><button type="button" className="table-sort" onClick={() => sortPool('salary')}>Salary{sortSuffix('salary')}</button></th>
+                        <th><button type="button" className="table-sort" onClick={() => sortPool('fantasyPpg')}>Fantasy PPG{sortSuffix('fantasyPpg')}</button></th>
+                        <th>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {visiblePlayers.map((player: any) => {
+                        const reason = disabledReason(player);
+                        const fppg = fantasyPpg(player);
+                        return (
+                          <tr key={player.id} className={reason ? 'dfs-row-muted' : ''}>
+                            <td><span className="dfs-player-name-cell"><strong>{playerName(player)}</strong>{availabilityBadge(player.availability_status)}</span></td>
+                            <td>{playerTeam(player)}</td>
+                            <td>{player.player?.position || player.position || '-'}</td>
+                            <td>{currency(adjustedSalary(activeSlot, player))}{activeSlot === 'CAPTAIN' ? ' CPT' : ''}</td>
+                            <td>{fppg.toFixed(2)} {!hasActualFantasyPpg(player) && <span className="muted">proj</span>}</td>
+                            <td><button type="button" disabled={Boolean(reason)} title={reason || 'Add player'} onClick={() => choosePlayer(player)}>{reason || 'Add'}</button></td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  {playerPoolEmptyReason && (
+                    <div className="list-card compact">
+                      <p className="muted">{playerPoolEmptyReason}</p>
+                      {!visiblePlayers.length && slatePlayers.length ? <button type="button" onClick={clearFilters}>Clear filters</button> : null}
+                    </div>
+                  )}
+                </div>
+              </section>
             </div>
           </div>
         </div>
@@ -359,10 +561,10 @@ export default function DfsClient() {
           <div className="modal-card card">
             <h3 className="card-title">{selectedGame.away_team_name} @ {selectedGame.home_team_name}</h3>
             <div className="stack-list">
-              {selectedGameStats.map((s: any) => (
-                <article key={s.id} className="list-card compact">
-                  <p><strong>{s.player_name || 'Team'}</strong> <span className="muted">{s.position || '—'}</span></p>
-                  <p className="muted">G {s.goals} · A {s.assists} · GA {s.goals_against}</p>
+              {selectedGameStats.map((stat: any) => (
+                <article key={stat.id} className="list-card compact">
+                  <p><strong>{stat.player_name || 'Team'}</strong> <span className="muted">{stat.position || '-'}</span></p>
+                  <p className="muted">G {stat.goals} - A {stat.assists} - GA {stat.goals_against}</p>
                 </article>
               ))}
               {!selectedGameStats.length && <p className="muted">No game stats posted yet.</p>}
@@ -371,6 +573,6 @@ export default function DfsClient() {
           </div>
         </div>
       )}
-    </main>
+    </>
   );
 }

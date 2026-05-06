@@ -135,9 +135,18 @@ export default function RegisterPage() {
           throw new Error('Email and password are required when not logged in.');
         }
 
+        const displayFallback = `${firstName.trim()} ${lastName.trim()}`.trim();
         const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
           email: email.trim(),
           password: password.trim(),
+          options: {
+            data: {
+              first_name: firstName.trim(),
+              last_name: lastName.trim(),
+              display_name: displayFallback || null,
+              phone: phone.trim() || null,
+            },
+          },
         });
 
         if (signUpError) throw signUpError;
@@ -155,29 +164,22 @@ export default function RegisterPage() {
       }
 
       const displayFallback = `${firstName.trim()} ${lastName.trim()}`.trim();
-      const { error: profileError } = await supabase.from('profiles').upsert(
-        {
-          user_id: userId,
+      const { error: profileError } = await supabase.auth.updateUser({
+        data: {
           first_name: firstName.trim(),
           last_name: lastName.trim(),
           display_name: displayFallback || null,
-          contact: phone.trim(),
+          phone: phone.trim() || null,
         },
-        { onConflict: 'user_id' },
-      );
+      });
 
       if (profileError) {
-        if (profileError.code === '42501') {
-          throw new Error(
-            'Profile save was blocked by Supabase RLS. Confirm you are logged in and that profiles insert/update policy allows auth.uid() = user_id.',
-          );
-        }
         throw profileError;
       }
 
       return userId;
     } catch (e: any) {
-      setError(e?.message ?? 'Unable to create profile.');
+      setError(e?.message ?? 'Unable to save account details.');
       return null;
     } finally {
       setLoading(false);

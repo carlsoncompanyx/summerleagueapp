@@ -9,7 +9,7 @@ This document reflects the **current public product model** (league-first, DFS c
 | Home / Games / Standings | `seasons`, `teams`, `games` |
 | Statistics | `players`, `game_stats`, `fantasy_points_v` (for DFS context only) |
 | DFS Contest Lobby + Builder | `slates`, `contests`, `slate_games`, `slate_players`, `contest_entries`, `contest_entry_slots` |
-| Community (Chat + Forums) | `chat_messages`, `forum_threads`, `forum_posts`, `profiles` |
+| Community (Chat + Forums) | `chat_messages`, `forum_threads`, `forum_posts`; author labels come from `auth.users` metadata |
 | Betting (weekly game markets) | `games`, `game_betting_lines` |
 
 ## Core public writes

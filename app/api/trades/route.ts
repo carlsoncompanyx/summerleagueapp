@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { listAuthUserProfiles, roleFromAuthUser } from '../../../lib/auth/metadata';
 import { createAdminSupabaseClient } from '../../../lib/supabase/admin';
 import { createServerSupabaseClient } from '../../../lib/supabase/server';
 import { isAdminRole, isCaptainRole, normalizeRole } from '../../../lib/roles';
@@ -8,9 +9,10 @@ function testModeAdmin() {
 }
 
 async function getActor() {
+  const admin = createAdminSupabaseClient();
   if (testModeAdmin()) {
-    const admin = createAdminSupabaseClient();
-    const { data: profile } = await admin.from('profiles').select('user_id').limit(1).maybeSingle();
+    const { profiles } = await listAuthUserProfiles(admin);
+    const profile = profiles[0];
     return { userId: profile?.user_id ?? null, role: 'ADMIN' as const };
   }
 
@@ -18,9 +20,7 @@ async function getActor() {
   const { data: { user } } = await server.auth.getUser();
   if (!user) return { userId: null, role: 'FAN' as const };
 
-  const admin = createAdminSupabaseClient();
-  const { data: profile } = await admin.from('profiles').select('role').eq('user_id', user.id).maybeSingle();
-  return { userId: user.id, role: normalizeRole(profile?.role ?? 'FAN') as 'FAN' | 'PLAYER' | 'CAPTAIN' | 'ADMIN' };
+  return { userId: user.id, role: normalizeRole(roleFromAuthUser(user)) as 'FAN' | 'PLAYER' | 'CAPTAIN' | 'ADMIN' };
 }
 
 async function getCaptainTeamIds(admin: any, userId: string | null | undefined) {

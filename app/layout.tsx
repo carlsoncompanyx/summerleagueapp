@@ -2,11 +2,9 @@ import Link from 'next/link';
 
 import './globals.css';
 import NavTabs from '../components/NavTabs';
-import { createAdminSupabaseClient } from '../lib/supabase/admin';
+import { displayNameFromAuthUser, roleFromAuthUser } from '../lib/auth/metadata';
 import { createServerSupabaseClient } from '../lib/supabase/server';
 import { Role } from '../lib/types';
-import { normalizeRole } from '../lib/roles';
-import { socialDisplayName } from '../lib/profiles/display';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -21,36 +19,22 @@ const logoSrc =
 
 async function getHeaderSession() {
   if (process.env.ADMIN_TEST_MODE === 'true' && (process.env.VERCEL_ENV ?? 'development') !== 'production') {
-    const admin = createAdminSupabaseClient();
-    const { data: profile } = await admin
-      .from('profiles')
-      .select('user_id, role, first_name, last_name, display_name')
-      .limit(1)
-      .maybeSingle();
-
     return {
-      role: normalizeRole(profile?.role ?? 'ADMIN') as Role,
+      role: 'ADMIN' as Role,
       isAuthenticated: true,
-      label: socialDisplayName(profile as any),
+      label: 'Test Admin',
     };
   }
 
   try {
     const server = createServerSupabaseClient();
-    const admin = createAdminSupabaseClient();
     const { data: { user } } = await server.auth.getUser();
     if (!user) return { role: 'FAN' as Role, isAuthenticated: false, label: null };
 
-    const { data: profile } = await admin
-      .from('profiles')
-      .select('role, first_name, last_name, display_name')
-      .eq('user_id', user.id)
-      .maybeSingle();
-
     return {
-      role: normalizeRole(profile?.role ?? 'FAN') as Role,
+      role: roleFromAuthUser(user) as Role,
       isAuthenticated: true,
-      label: socialDisplayName(profile as any),
+      label: displayNameFromAuthUser(user),
     };
   } catch (error) {
     console.error('Header session fetch failed', error);

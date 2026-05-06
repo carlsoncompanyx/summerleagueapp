@@ -1,5 +1,6 @@
 import { unstable_noStore as noStore } from 'next/cache';
 
+import { getSupabaseEnvDiagnostics } from './env';
 import { createAdminSupabaseClient } from './supabase/admin';
 import { createServerSupabaseClient } from './supabase/server';
 
@@ -24,18 +25,9 @@ type Player = {
   nickname: string | null;
 };
 
-function envStatus() {
-  return {
-    hasNextPublicUrl: Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL),
-    hasNextPublicAnon: Boolean(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY),
-    hasSupabaseUrl: Boolean(process.env.SUPABASE_URL),
-    hasServiceRole: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
-  };
-}
-
 function getAdminClientSafe() {
   try {
-    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) return null;
+    if (!(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL) || !process.env.SUPABASE_SERVICE_ROLE_KEY) return null;
     return createAdminSupabaseClient();
   } catch {
     return null;
@@ -57,7 +49,7 @@ export async function getLeagueSnapshot() {
   const adminClient = getAdminClientSafe();
   const supabase = adminClient ?? getServerClientSafe();
   if (!supabase) {
-    const env = envStatus();
+    const env = getSupabaseEnvDiagnostics();
     return {
       unavailable: true,
       reason:
@@ -89,7 +81,7 @@ export async function getLeagueSnapshot() {
         contests: contestsRes.error?.message,
         slate_games: slateGamesRes.error?.message,
         usingServiceRole: Boolean(adminClient),
-        env: envStatus(),
+        env: getSupabaseEnvDiagnostics(),
       })}`,
     } as const;
   }

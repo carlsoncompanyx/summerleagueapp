@@ -4,7 +4,7 @@ from pathlib import Path
 def test_sql_schema_has_required_tables_and_rls():
     schema = Path('sql/schema.sql').read_text()
     required_tables = [
-        'profiles', 'seasons', 'registrations', 'teams', 'team_members', 'players',
+        'seasons', 'teams', 'team_members', 'players',
         'games', 'game_events', 'wallet', 'wallet_transactions', 'beer_bucks_packages',
         'bets', 'trades', 'chat_messages'
     ]

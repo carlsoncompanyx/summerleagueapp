@@ -1,57 +1,87 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { displayNameFromAuthUser, listAuthUserProfiles, roleFromAuthUser } from '../../../lib/auth/metadata';
 import { createAdminSupabaseClient } from '../../../lib/supabase/admin';
 import { createServerSupabaseClient } from '../../../lib/supabase/server';
 import { isAdminRole, normalizeRole } from '../../../lib/roles';
-import { socialDisplayName } from '../../../lib/profiles/display';
 
 function testModeAdmin() {
   return process.env.ADMIN_TEST_MODE === 'true' && (process.env.VERCEL_ENV ?? 'development') !== 'production';
 }
 
 async function currentUser() {
+  const admin = createAdminSupabaseClient();
   if (testModeAdmin()) {
-    const admin = createAdminSupabaseClient();
-    const { data: profile } = await admin.from('profiles').select('user_id').limit(1).maybeSingle();
+    const { profiles } = await listAuthUserProfiles(admin);
+    const profile = profiles[0];
     if (!profile?.user_id) return null;
-    return { id: profile.user_id, admin: true, role: 'ADMIN' };
+    return { id: profile.user_id, admin: true, role: 'ADMIN', displayName: profile.display_name || profile.email || `User ${profile.user_id.slice(0, 8)}` };
   }
+
   const server = createServerSupabaseClient();
   const { data: { user } } = await server.auth.getUser();
   if (!user) return null;
-  const admin = createAdminSupabaseClient();
-  const { data: p } = await admin.from('profiles').select('role').eq('user_id', user.id).maybeSingle();
-  return { id: user.id, admin: isAdminRole(p?.role), role: normalizeRole(p?.role ?? 'FAN') };
+  const role = roleFromAuthUser(user);
+  return {
+    id: user.id,
+    admin: isAdminRole(role),
+    role: normalizeRole(role),
+    displayName: displayNameFromAuthUser(user),
+  };
+}
+
+function authMetadataName(profile: any) {
+  const display = String(profile?.display_name ?? '').trim();
+  if (display) return display;
+  const full = `${String(profile?.first_name ?? '').trim()} ${String(profile?.last_name ?? '').trim()}`.trim();
+  return full || null;
+}
+
+function shortUserId(userId: string | null | undefined) {
+  return userId ? `User ${userId.slice(0, 8)}` : 'Member';
+}
+
+function cleanText(value: unknown) {
+  const text = String(value ?? '').trim();
+  return text || null;
 }
 
 export async function GET(req: NextRequest) {
   const seasonId = req.nextUrl.searchParams.get('season_id');
   const admin = createAdminSupabaseClient();
+  const actor = await currentUser();
 
   let chatQ = admin.from('chat_messages').select('*').order('created_at', { ascending: false }).limit(60);
-  let threadQ = admin.from('forum_threads').select('*').is('deleted_at', null).order('updated_at', { ascending: false }).limit(50);
-  if (seasonId) {
-    chatQ = chatQ.eq('season_id', seasonId);
-    threadQ = threadQ.eq('season_id', seasonId);
-  }
+  if (seasonId) chatQ = chatQ.eq('season_id', seasonId);
 
-  const [chat, threads, posts, profiles] = await Promise.all([
-    chatQ,
-    threadQ,
-    admin.from('forum_posts').select('*').is('deleted_at', null).order('created_at', { ascending: true }),
-    admin.from('profiles').select('user_id,first_name,last_name,display_name'),
+  const chat = await chatQ;
+  if (chat.error) return NextResponse.json({ error: chat.error.message }, { status: 500 });
+
+  const authorIds = Array.from(new Set((chat.data ?? []).map((row: any) => row.user_id).filter(Boolean)));
+  const [{ profiles }, playersRes] = await Promise.all([
+    listAuthUserProfiles(admin, authorIds),
+    authorIds.length ? admin.from('players').select('user_id,name').in('user_id', authorIds) : Promise.resolve({ data: [] as any[], error: null }),
   ]);
 
-  const profileById = new Map((profiles.data ?? []).map((p: any) => [p.user_id, p]));
-  const mapAuthor = (userId: string | null | undefined) => {
-    if (!userId) return null;
-    const profile = profileById.get(userId);
-    return profile ? socialDisplayName(profile) : null;
+  if (playersRes.error) return NextResponse.json({ error: playersRes.error.message }, { status: 500 });
+
+  const profileById = new Map(profiles.map((profile: any) => [profile.user_id, profile]));
+  const playerNameByUser = new Map((playersRes.data ?? []).filter((player: any) => player.user_id).map((player: any) => [player.user_id, player.name]));
+
+  const displayFor = (userId: string | null | undefined) => {
+    const profile = userId ? profileById.get(userId) : null;
+    return authMetadataName(profile)
+      ?? (userId ? playerNameByUser.get(userId) : null)
+      ?? cleanText(profile?.email)
+      ?? shortUserId(userId);
   };
 
   return NextResponse.json({
-    chat: (chat.data ?? []).map((m: any) => ({ ...m, author_display: mapAuthor(m.user_id) })),
-    threads: (threads.data ?? []).map((th: any) => ({ ...th, author_display: mapAuthor(th.author_id) })),
-    posts: (posts.data ?? []).map((po: any) => ({ ...po, author_display: mapAuthor(po.author_id) })),
+    actor: actor ? { id: actor.id, role: actor.role, admin: actor.admin, displayName: actor.displayName } : null,
+    chat: (chat.data ?? []).map((message: any) => ({
+      ...message,
+      author_display: displayFor(message.user_id),
+      can_delete: Boolean(actor?.admin),
+    })),
   });
 }
 
@@ -70,42 +100,21 @@ export async function POST(req: NextRequest) {
         season_id: payload.season_id || null,
         user_id: me.id,
         role: me.role || 'FAN',
-        message: String(payload.message || '').trim(),
+        message,
       });
       if (error) throw error;
       return NextResponse.json({ ok: true });
     }
-    if (action === 'thread_create') {
-      const { error } = await admin.from('forum_threads').insert({
-        season_id: payload.season_id || null,
-        author_id: me.id,
-        title: payload.title,
-        body: payload.body,
-      });
-      if (error) throw error;
-      return NextResponse.json({ ok: true });
-    }
-    if (action === 'post_reply') {
-      const { error } = await admin.from('forum_posts').insert({
-        thread_id: payload.thread_id,
-        author_id: me.id,
-        body: payload.body,
-      });
-      if (error) throw error;
-      return NextResponse.json({ ok: true });
-    }
-    if (action === 'admin_delete_post') {
+
+    if (action === 'admin_delete_chat') {
       if (!me.admin) return NextResponse.json({ error: 'Admin only' }, { status: 403 });
-      const { error } = await admin.from('forum_posts').update({ deleted_at: new Date().toISOString() }).eq('id', payload.id);
+      const id = String(payload.id || '').trim();
+      if (!id) return NextResponse.json({ error: 'Message id is required.' }, { status: 400 });
+      const { error } = await admin.from('chat_messages').delete().eq('id', id);
       if (error) throw error;
       return NextResponse.json({ ok: true });
     }
-    if (action === 'admin_delete_thread') {
-      if (!me.admin) return NextResponse.json({ error: 'Admin only' }, { status: 403 });
-      const { error } = await admin.from('forum_threads').update({ deleted_at: new Date().toISOString() }).eq('id', payload.id);
-      if (error) throw error;
-      return NextResponse.json({ ok: true });
-    }
+
     return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message ?? 'Failed' }, { status: 500 });

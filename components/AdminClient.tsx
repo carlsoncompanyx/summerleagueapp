@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import AdminDashboardShell from './admin/AdminDashboardShell';
 
-type ActionResult = { ok: true; data: any } | { ok: false; error: string; rowErrors?: string[]; details?: any; data?: any };
+type ActionResult = { ok: true; data: any } | { ok: false; error: string; rowErrors?: any[]; importDiagnostics?: any; counts?: any; mappedRows?: any[]; warnings?: string[]; details?: any; data?: any };
 
 export default function AdminClient(){
   const [data,setData]=useState<any>(null); const [loading,setLoading]=useState(true); const [error,setError]=useState<string|null>(null);
@@ -12,7 +12,17 @@ export default function AdminClient(){
     try {
       const res=await fetch('/api/admin/dashboard',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action,payload})});
       let body:any={}; try{body=await res.json();}catch{}
-      if(!res.ok) return { ok:false,error:body?.error||'Request failed',rowErrors:body?.rowErrors,details:body?.details,data:body };
+      if(!res.ok) return {
+        ok:false,
+        error:body?.error||body?.details?.message||`Request failed (${res.status})`,
+        rowErrors:body?.rowErrors,
+        importDiagnostics:body?.importDiagnostics,
+        counts:body?.counts,
+        mappedRows:body?.mappedRows,
+        warnings:body?.warnings,
+        details:body?.details,
+        data:body,
+      };
       return { ok:true,data:body };
     } catch (e:any) {
       return { ok:false,error:e?.message||'Network error' };

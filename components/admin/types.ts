@@ -1,10 +1,9 @@
 export type Role = 'FAN' | 'PLAYER' | 'CAPTAIN' | 'ADMIN';
-export type Tab = 'dashboard' | 'seasons' | 'teams' | 'players' | 'registrations' | 'games' | 'scores' | 'trades' | 'dfs';
+export type Tab = 'dashboard' | 'seasons' | 'teams' | 'players' | 'games' | 'scores' | 'trades' | 'dfs';
 export type Season = { id: string; name: string; start_date: string; end_date: string; registration_open_at: string | null; registration_close_at: string | null; waiver_text: string | null; rules: string | null };
-export type Team = { id: string; season_id: string; name: string; captain_user_id: string | null };
+export type Team = { id: string; season_id: string; name: string; logo_url?: string | null; captain_user_id: string | null };
 export type Player = { id: string; season_id: string | null; team_id: string | null; user_id: string | null; name: string; jersey: number | null; position: string | null };
-export type Profile = { user_id: string; display_name: string | null; first_name?: string | null; last_name?: string | null; role: Role; team_id: string | null };
-export type Registration = { id: string; season_id: string; user_id: string; status: string };
+export type Profile = { user_id: string; display_name: string | null; first_name?: string | null; last_name?: string | null; contact?: string | null; email?: string | null; role: Role; team_id: string | null };
 export type Trade = { id: string; season_id: string; from_team_id: string; to_team_id: string; status: string };
 export type Game = { id: string; season_id: string; home_team: string; away_team: string; scheduled_at: string; location: string | null; status: string; home_score: number; away_score: number };
-export type GameStat = { game_id: string; player_id: string; team_id: string | null; position: string | null; games_played: number; goals: number; assists: number; goals_against: number };
+export type GameStat = { game_id: string; player_id: string; position: string | null; games_played: number; goals: number; assists: number; goals_against: number };

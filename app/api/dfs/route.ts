@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { listAuthUserProfiles, roleFromAuthUser } from '../../../lib/auth/metadata';
 import { createAdminSupabaseClient } from '../../../lib/supabase/admin';
 import { createServerSupabaseClient } from '../../../lib/supabase/server';
 import { buildSlateValuations, getFantasyPlayerDetails } from '../../../lib/dfs/valuation';
 import { computeDfsFantasyPoints, DFS_CAPTAIN_MULTIPLIER, parseDfsPosition } from '../../../lib/dfs/scoring';
 import { leagueDateKey } from '../../../lib/formatters';
 import { isAdminRole, normalizeRole } from '../../../lib/roles';
+import { profileDisplayLabel } from '../../../lib/profiles/display';
 
 const REQUIRED_SLOTS = ['CAPTAIN', 'SKATER_1', 'SKATER_2', 'SKATER_3', 'SKATER_4', 'GOALIE'];
 
@@ -15,15 +17,14 @@ function testModeAdmin() {
 async function getCurrentActor() {
   const admin = createAdminSupabaseClient();
   if (testModeAdmin()) {
-    const { data: profile } = await admin.from('profiles').select('user_id,role').limit(1).maybeSingle();
-    return { userId: profile?.user_id ?? null, role: normalizeRole(profile?.role ?? 'ADMIN') };
+    const { profiles } = await listAuthUserProfiles(admin);
+    return { userId: profiles[0]?.user_id ?? null, role: 'ADMIN' };
   }
 
   const server = createServerSupabaseClient();
   const { data: { user } } = await server.auth.getUser();
   if (!user) return { userId: null, role: 'FAN' };
-  const { data: profile } = await admin.from('profiles').select('role').eq('user_id', user.id).maybeSingle();
-  return { userId: user.id, role: normalizeRole(profile?.role ?? 'FAN') };
+  return { userId: user.id, role: normalizeRole(roleFromAuthUser(user)) };
 }
 
 function validateSlots(slots: any[]) {
@@ -80,8 +81,8 @@ async function rebuildSlatePlayersSnapshot(admin: any, slateId: string, seasonId
 }
 
 export async function GET(req: NextRequest) {
-  const slateId = req.nextUrl.searchParams.get('slate_id');
-  const contestId = req.nextUrl.searchParams.get('contest_id');
+  const requestedSlateId = req.nextUrl.searchParams.get('slate_id');
+  const requestedContestId = req.nextUrl.searchParams.get('contest_id');
   const playerId = req.nextUrl.searchParams.get('player_id');
   const seasonId = req.nextUrl.searchParams.get('season_id') || undefined;
   const actor = await getCurrentActor();
@@ -93,14 +94,57 @@ export async function GET(req: NextRequest) {
   }
 
   const admin = createAdminSupabaseClient();
-  const [slates, contests, slatePlayers, seasons] = await Promise.all([
+  const [slates, contests, seasons] = await Promise.all([
     admin.from('slates').select('*').order('lock_at', { ascending: true }),
     admin.from('contests').select('*').order('lock_at', { ascending: true }),
-    slateId
-      ? admin.from('slate_players').select('*').eq('slate_id', slateId).order('projection_points', { ascending: false })
-      : Promise.resolve({ data: [] as any[] }),
     admin.from('seasons').select('id,name,start_date,end_date').order('start_date', { ascending: false }),
   ]);
+
+  if (slates.error) return NextResponse.json({ error: slates.error.message }, { status: 500 });
+  if (contests.error) return NextResponse.json({ error: contests.error.message }, { status: 500 });
+  if (seasons.error) return NextResponse.json({ error: seasons.error.message }, { status: 500 });
+
+  const now = Date.now();
+  const slatesData = slates.data ?? [];
+  const contestsData = contests.data ?? [];
+  const orderedSlates = slatesData.slice().sort((a: any, b: any) => new Date(a.lock_at ?? 0).getTime() - new Date(b.lock_at ?? 0).getTime());
+  const recommendedSlate = orderedSlates.find((s: any) => new Date(s.lock_at ?? 0).getTime() > now) ?? orderedSlates[0] ?? null;
+  const orderedContests = contestsData.slice().sort((a: any, b: any) => new Date(a.lock_at ?? 0).getTime() - new Date(b.lock_at ?? 0).getTime());
+  const recommendedContest = orderedContests.find((contest: any) => (
+    ['open', 'live'].includes(String(contest.status || '').toLowerCase())
+    && (!contest.lock_at || new Date(contest.lock_at).getTime() > now || String(contest.status || '').toLowerCase() === 'live')
+  )) ?? orderedContests[0] ?? null;
+
+  let selectedContest = requestedContestId
+    ? contestsData.find((contest: any) => contest.id === requestedContestId) ?? null
+    : null;
+  if (requestedContestId && !selectedContest) {
+    return NextResponse.json({ error: 'Contest not found.' }, { status: 404 });
+  }
+
+  let selectedSlateId = selectedContest?.slate_id ?? requestedSlateId ?? recommendedSlate?.id ?? null;
+
+  if (!selectedContest && selectedSlateId) {
+    const contestsForSlate = orderedContests.filter((contest: any) => contest.slate_id === selectedSlateId);
+    selectedContest = contestsForSlate.find((contest: any) => (
+      ['open', 'live'].includes(String(contest.status || '').toLowerCase())
+      && (!contest.lock_at || new Date(contest.lock_at).getTime() > now || String(contest.status || '').toLowerCase() === 'live')
+    )) ?? contestsForSlate[0] ?? null;
+  }
+
+  if (!selectedContest && recommendedContest) {
+    selectedContest = recommendedContest;
+    selectedSlateId = recommendedContest.slate_id ?? selectedSlateId;
+  }
+
+  if (selectedContest?.slate_id) {
+    selectedSlateId = selectedContest.slate_id;
+  }
+
+  const slatePlayers = selectedSlateId
+    ? await admin.from('slate_players').select('*').eq('slate_id', selectedSlateId).order('projection_points', { ascending: false })
+    : { data: [] as any[], error: null };
+  if (slatePlayers.error) return NextResponse.json({ error: slatePlayers.error.message }, { status: 500 });
 
   const rawPlayers = (slatePlayers as any).data ?? [];
   const ids = rawPlayers.map((p: any) => p.player_id);
@@ -111,8 +155,8 @@ export async function GET(req: NextRequest) {
   const { data: teams } = teamIds.length
     ? await admin.from('teams').select('id,name').in('id', teamIds)
     : { data: [] as any[] };
-  const slateSeasonId = slateId
-    ? (slates.data ?? []).find((s: any) => s.id === slateId)?.season_id
+  const slateSeasonId = selectedSlateId
+    ? slatesData.find((s: any) => s.id === selectedSlateId)?.season_id
     : undefined;
 
   const { data: fantasyRows } = ids.length && slateSeasonId
@@ -146,7 +190,7 @@ export async function GET(req: NextRequest) {
     slotsByEntry.get(row.entry_id)!.push({ slot: row.slot, player_id: row.player_id });
   }
 
-  const selectedContestId = contestId || null;
+  const selectedContestId = selectedContest?.id ?? null;
   const leaderboardQ = selectedContestId
     ? await admin
       .from('contest_entries')
@@ -158,25 +202,20 @@ export async function GET(req: NextRequest) {
     : { data: [] as any[] };
 
   const leaderboardUserIds = Array.from(new Set((leaderboardQ.data ?? []).map((e: any) => e.user_id).filter(Boolean)));
-  const { data: leaderboardProfiles } = leaderboardUserIds.length
-    ? await admin.from('profiles').select('user_id,display_name,first_name,last_name').in('user_id', leaderboardUserIds)
+  const leaderboardProfiles = leaderboardUserIds.length
+    ? await listAuthUserProfiles(admin, leaderboardUserIds)
+    : { profiles: [] as any[], errorMessage: null };
+  const profileByUser = new Map(leaderboardProfiles.profiles.map((profile: any) => [
+    profile.user_id,
+    profileDisplayLabel(profile),
+  ]));
+
+  const resolvedSeasonId = seasonId ?? slateSeasonId;
+  const valuationInputsQ = resolvedSeasonId
+    ? await admin.from('player_valuation_inputs').select('*').eq('season_id', resolvedSeasonId)
     : { data: [] as any[] };
-  const profileByUser = new Map((leaderboardProfiles ?? []).map((p: any) => {
-    const full = `${p.first_name ?? ''} ${p.last_name ?? ''}`.trim();
-    return [p.user_id, p.display_name || full || 'User'];
-  }));
-
-  const now = Date.now();
-  const orderedSlates = (slates.data ?? []).slice().sort((a: any, b: any) => new Date(a.lock_at ?? 0).getTime() - new Date(b.lock_at ?? 0).getTime());
-  const recommendedSlate = orderedSlates.find((s: any) => new Date(s.lock_at ?? 0).getTime() > now) ?? orderedSlates[0] ?? null;
-
-  const selectedSlateId = slateId || recommendedSlate?.id || null;
-
-  const valuationInputsQ = seasonId
-    ? await admin.from('player_valuation_inputs').select('*').eq('season_id', seasonId)
-    : { data: [] as any[] };
-  const projectionOverridesQ = seasonId
-    ? await admin.from('player_projection_overrides').select('*').eq('season_id', seasonId)
+  const projectionOverridesQ = resolvedSeasonId
+    ? await admin.from('player_projection_overrides').select('*').eq('season_id', resolvedSeasonId)
     : { data: [] as any[] };
 
   const slateGames = selectedSlateId
@@ -191,19 +230,68 @@ export async function GET(req: NextRequest) {
     ? await admin.from('teams').select('id,name').in('id', slateGameTeamIds)
     : { data: [] as any[] };
   const gameTeamMap = new Map((slateGameTeams ?? []).map((t: any) => [t.id, t.name]));
+  const slateGameIds = slateGameRows.map((g: any) => g.id);
+  const { data: slateGameStats } = slateGameIds.length
+    ? await admin.from('game_stats').select('id,game_id,player_id,games_played,goals,assists,goals_against').in('game_id', slateGameIds)
+    : { data: [] as any[] };
+  const statPlayerIds = Array.from(new Set((slateGameStats ?? []).map((row: any) => row.player_id).filter(Boolean)));
+  const { data: statPlayers } = statPlayerIds.length
+    ? await admin.from('players').select('id,name,jersey,position,team_id').in('id', statPlayerIds)
+    : { data: [] as any[] };
+  const statPlayerById = new Map((statPlayers ?? []).map((player: any) => [player.id, player]));
+  const slateGameById = new Map(slateGameRows.map((game: any) => [game.id, game]));
+  const pointScorersByGame = new Map<string, { away: any[]; home: any[] }>();
+  for (const row of slateGameStats ?? []) {
+    const player = statPlayerById.get(row.player_id);
+    const game = slateGameById.get(row.game_id);
+    if (!player || !game) continue;
+    const hasSkaterPoints = Number(row.goals || 0) > 0 || Number(row.assists || 0) > 0;
+    const hasGoalieStats = String(player.position || '').toLowerCase().includes('goal') && (Number(row.goals_against || 0) > 0 || Number(row.games_played || 0) > 0);
+    if (!hasSkaterPoints && !hasGoalieStats) continue;
+    if (!pointScorersByGame.has(row.game_id)) pointScorersByGame.set(row.game_id, { away: [], home: [] });
+    const teamSide = player.team_id === game.home_team ? 'home' : player.team_id === game.away_team ? 'away' : null;
+    if (!teamSide) continue;
+    const goalieWin = String(player.position || '').toLowerCase().includes('goal')
+      && game.status === 'FINAL'
+      && ((player.team_id === game.home_team && game.home_score > game.away_score) || (player.team_id === game.away_team && game.away_score > game.home_score))
+      ? 1
+      : 0;
+    pointScorersByGame.get(row.game_id)![teamSide].push({
+      id: row.id,
+      player_id: row.player_id,
+      jersey: player.jersey,
+      player_name: player.name,
+      position: player.position,
+      goals: Number(row.goals || 0),
+      assists: Number(row.assists || 0),
+      goals_against: Number(row.goals_against || 0),
+      fantasy_points: computeDfsFantasyPoints({
+        position: player.position,
+        goals: Number(row.goals || 0),
+        assists: Number(row.assists || 0),
+        goalsAgainst: Number(row.goals_against || 0),
+        wins: goalieWin,
+      }),
+    });
+  }
 
   return NextResponse.json({
     actor,
-    slates: slates.data ?? [],
-    contests: contests.data ?? [],
+    slates: slatesData,
+    contests: contestsData,
     seasons: seasons.data ?? [],
     slatePlayers: merged,
     slateGames: slateGameRows.map((g: any) => ({
       ...g,
       home_team_name: gameTeamMap.get(g.home_team) ?? g.home_team,
       away_team_name: gameTeamMap.get(g.away_team) ?? g.away_team,
+      point_scorers: pointScorersByGame.get(g.id) ?? { away: [], home: [] },
     })),
+    selectedContestId,
+    selectedSlateId,
     recommendedSlateId: recommendedSlate?.id ?? null,
+    recommendedContestId: recommendedContest?.id ?? null,
+    slatePlayersCount: merged.length,
     myEntries: (entriesQ.data ?? []).map((e: any) => ({
       ...e,
       contest_name: e.contests?.name ?? null,
@@ -516,6 +604,11 @@ export async function POST(req: NextRequest) {
       const goalie = slots.find((s: any) => s.slot === 'GOALIE');
       if (!goalie) return NextResponse.json({ error: 'Goalie slot is required.' }, { status: 400 });
       if (parseDfsPosition(posById.get(goalie.player_id)) !== 'GOALIE') return NextResponse.json({ error: 'Goalie slot requires a goalie.' }, { status: 400 });
+      const skaterSlots = slots.filter((s: any) => s.slot.startsWith('SKATER_'));
+      if (skaterSlots.length !== 4) return NextResponse.json({ error: 'Exactly four skater slots are required.' }, { status: 400 });
+      for (const s of skaterSlots) {
+        if (parseDfsPosition(posById.get(s.player_id)) === 'GOALIE') return NextResponse.json({ error: `${s.slot} must be a skater.` }, { status: 400 });
+      }
 
       let salaryUsed = 0;
       let projected = 0;
@@ -574,8 +667,13 @@ export async function POST(req: NextRequest) {
       if (availability === 'OUT') {
         updatePayload.availability_projection_backup = slatePlayer.availability_projection_backup ?? slatePlayer.projection_points ?? 0;
         updatePayload.projection_points = 0;
-      } else if (slatePlayer.availability_projection_backup != null && Number(slatePlayer.projection_points) === 0) {
+      } else if (availability === 'QUESTIONABLE') {
+        const baseProjection = slatePlayer.availability_projection_backup ?? slatePlayer.projection_points ?? 0;
+        updatePayload.availability_projection_backup = baseProjection;
+        updatePayload.projection_points = Number((Number(baseProjection) * 0.75).toFixed(2));
+      } else if (slatePlayer.availability_projection_backup != null) {
         updatePayload.projection_points = slatePlayer.availability_projection_backup;
+        updatePayload.availability_projection_backup = null;
       }
 
       const { error } = await admin.from('slate_players').update(updatePayload).eq('id', payload.slate_player_id);
@@ -589,7 +687,7 @@ export async function POST(req: NextRequest) {
       if (!['A', 'B', 'C', 'D', 'F'].includes(grade)) {
         return NextResponse.json({ error: 'Invalid player grade.' }, { status: 400 });
       }
-      const { error } = await admin.from('player_valuation_inputs').upsert({
+      const row = {
         season_id: payload.season_id,
         player_id: payload.player_id,
         min_sample_games: Number(payload.min_sample_games ?? 2),
@@ -597,7 +695,19 @@ export async function POST(req: NextRequest) {
         player_grade: grade,
         notes: payload.notes ?? null,
         updated_at: new Date().toISOString(),
-      }, { onConflict: 'season_id,player_id' });
+      };
+      const { data: existing, error: findError } = await admin
+        .from('player_valuation_inputs')
+        .select('id')
+        .eq('season_id', row.season_id)
+        .eq('player_id', row.player_id)
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (findError) throw findError;
+      const { error } = existing?.id
+        ? await admin.from('player_valuation_inputs').update(row).eq('id', existing.id)
+        : await admin.from('player_valuation_inputs').insert(row);
       if (error) throw error;
       return NextResponse.json({ ok: true });
     }
@@ -626,6 +736,17 @@ export async function POST(req: NextRequest) {
         updated_at: new Date().toISOString(),
       }, { onConflict: 'season_id,player_id' });
       if (error) throw error;
+
+      if (payload.slate_player_id) {
+        const slateUpdate: any = {};
+        if (hasProjection) slateUpdate.projection_points = Number(payload.projection_points);
+        if (hasSalary) slateUpdate.salary = Number(payload.salary_override);
+        if (Object.keys(slateUpdate).length) {
+          const { error: slateErr } = await admin.from('slate_players').update(slateUpdate).eq('id', payload.slate_player_id);
+          if (slateErr) throw slateErr;
+        }
+      }
+
       return NextResponse.json({ ok: true });
     }
 
@@ -642,8 +763,8 @@ export async function POST(req: NextRequest) {
 
       const [{ data: gameRows }, { data: gsRows }, { data: playerRows }, { data: entryRows }] = await Promise.all([
         admin.from('games').select('id,home_team,away_team,home_score,away_score,status').in('id', gameIds),
-        admin.from('game_stats').select('game_id,player_id,team_id,goals,assists,goals_against').in('game_id', gameIds),
-        admin.from('players').select('id,position'),
+        admin.from('game_stats').select('game_id,player_id,goals,assists,goals_against').in('game_id', gameIds),
+        admin.from('players').select('id,position,team_id'),
         admin.from('contest_entries').select('id').eq('contest_id', contestId),
       ]);
 
@@ -652,8 +773,9 @@ export async function POST(req: NextRequest) {
         ? await admin.from('contest_entry_players').select('*').in('entry_id', entryIds)
         : { data: [] as any[] };
 
-      const playerPos = new Map((playerRows ?? []).map((p: any) => [p.id, p.position]));
+      const playerInfo = new Map((playerRows ?? []).map((p: any) => [p.id, p]));
       const gameById = new Map((gameRows ?? []).map((g: any) => [g.id, g]));
+      const scoringErrors = new Set<string>();
 
       const agg = new Map<string, { goals: number; assists: number; ga: number; wins: number }>();
       for (const row of gsRows ?? []) {
@@ -665,16 +787,27 @@ export async function POST(req: NextRequest) {
 
         const game = gameById.get(row.game_id);
         if (game && game.status === 'FINAL') {
-          const wonHome = game.home_score > game.away_score && row.team_id === game.home_team;
-          const wonAway = game.away_score > game.home_score && row.team_id === game.away_team;
+          const info = playerInfo.get(row.player_id);
+          const teamId = info?.team_id ?? null;
+          const isGoalie = parseDfsPosition(info?.position) === 'GOALIE' || Number(row.goals_against || 0) > 0;
+          if (isGoalie && (!teamId || (teamId !== game.home_team && teamId !== game.away_team))) {
+            scoringErrors.add(`Cannot determine goalie team for player ${row.player_id} in game ${row.game_id}.`);
+            continue;
+          }
+          const wonHome = game.home_score > game.away_score && teamId === game.home_team;
+          const wonAway = game.away_score > game.home_score && teamId === game.away_team;
           if (wonHome || wonAway) a.wins += 1;
         }
+      }
+
+      if (scoringErrors.size) {
+        return NextResponse.json({ error: Array.from(scoringErrors).join(' ') }, { status: 400 });
       }
 
       const playerFantasy = new Map<string, number>();
       for (const [playerId, a] of agg.entries()) {
         playerFantasy.set(playerId, computeDfsFantasyPoints({
-          position: playerPos.get(playerId),
+          position: playerInfo.get(playerId)?.position,
           goals: a.goals,
           assists: a.assists,
           wins: a.wins,

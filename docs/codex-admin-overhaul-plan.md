@@ -8,7 +8,7 @@
   - Loads all admin datasets from a single `GET /api/admin/dashboard` call.
   - Executes all mutations through one `POST /api/admin/dashboard` endpoint using `action` strings.
   - Contains tab UI, forms, CSV import flow, score entry modal state, DFS tooling, and local filtering in one file.
-- `app/api/admin/dashboard/route.ts` is currently a broad command-handler route that performs season/team/player/game/trade/registration mutations, score submission, and CSV imports.
+- `app/api/admin/dashboard/route.ts` is currently a broad command-handler route that performs season/team/player/game/trade mutations, score submission, and CSV imports.
 
 ### CSV import flow
 - CSV parsing is client-side in `components/AdminClient.tsx` via `lib/csv/parse.ts`.
@@ -88,21 +88,19 @@ Create the following under `components/admin/` (or equivalent folder):
    - CRUD UI for teams and captain assignment.
 4. `AdminPlayerManager.tsx`
    - CRUD UI for players with team-season integrity prompts.
-5. `AdminRegistrationManager.tsx`
-   - Registration status updates and registration→player assignment.
-6. `AdminScheduleManager.tsx`
+5. `AdminScheduleManager.tsx`
    - Game create/update/delete UI.
-7. `AdminScoreEntryManager.tsx`
+6. `AdminScoreEntryManager.tsx`
    - Score + player stat entry UI with validation preview.
-8. `AdminTradeReviewManager.tsx`
+7. `AdminTradeReviewManager.tsx`
    - Read-only or actioned admin review wired to `/api/trades` only.
-9. `AdminCsvImportModal.tsx`
+8. `AdminCsvImportModal.tsx`
    - Shared CSV upload/mapping/validation UI for players/games imports.
-10. `AdminDfsOpsManager.tsx`
+9. `AdminDfsOpsManager.tsx`
    - Admin DFS operations (slate generation, valuation/reprice controls).
-11. `admin/hooks/useAdminDashboardData.ts`
+10. `admin/hooks/useAdminDashboardData.ts`
    - Query/refetch helper for baseline admin datasets.
-12. `admin/api.ts`
+11. `admin/api.ts`
    - Typed client request wrappers replacing ad-hoc fetch calls.
 
 ---
@@ -116,12 +114,11 @@ Create the following under `components/admin/` (or equivalent folder):
 1. `/api/admin/seasons` (POST/PATCH/DELETE)
 2. `/api/admin/teams` (POST/PATCH/DELETE)
 3. `/api/admin/players` (POST/PATCH/DELETE)
-4. `/api/admin/registrations` (PATCH for status + assignment action)
-5. `/api/admin/games` (POST/PATCH/DELETE)
-6. `/api/admin/games/[gameId]/score` (POST transactional score/stat submission)
-7. `/api/admin/import/players` (POST)
-8. `/api/admin/import/games` (POST)
-9. `/api/admin/dfs/defaults` (POST for default slate/day generation)
+4. `/api/admin/games` (POST/PATCH/DELETE)
+5. `/api/admin/games/[gameId]/score` (POST transactional score/stat submission)
+6. `/api/admin/import/players` (POST)
+7. `/api/admin/import/games` (POST)
+8. `/api/admin/dfs/defaults` (POST for default slate/day generation)
 
 ### Trade ownership
 - Remove `trade_propose`, `trade_approve`, `trade_reject` action handlers from `app/api/admin/dashboard/route.ts`.
@@ -169,7 +166,7 @@ Create the following under `components/admin/` (or equivalent folder):
 3. Write migration checklist and feature-flag plan.
 
 ### Phase 1 — Admin API Decomposition (No UI change yet)
-1. Create `/api/admin/*` domain routes for seasons/teams/players/registrations/games/import.
+1. Create `/api/admin/*` domain routes for seasons/teams/players/games/import.
 2. Move score submission into `/api/admin/games/[gameId]/score`.
 3. Keep old `POST /api/admin/dashboard` route temporarily as compatibility shim (delegating to new handlers).
 4. Add shared admin auth guard utility.
